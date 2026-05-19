@@ -118,30 +118,83 @@ Edit `config/default_mix.yaml` and add an entry to the `mixes` array. No code ch
 
 ---
 
+## Output Archive
+
+The `--archive` flag (available on `mix`, `process`, and `process-queue`) copies any existing output files to a timestamped subdirectory before overwriting them:
+
+```
+songs/<name>/output/Ab-68bpm/
+  full.m4a                      ← current
+  archive/
+    2026-05-19-133042/
+      full.m4a                  ← previous run
+```
+
+Archives are inside `output/` and are covered by the existing `.gitignore` rule.
+
+---
+
+## Deferred: Normalized Stem Caching
+
+Normalization is the slow step. Caching normalized WAVs would let re-runs skip it when stems haven't changed. The cache path must be keyed to the full song/key/bpm combo — not just the song — because different keys come from different stem sets with different recorded levels:
+
+```
+songs/<name>/normalized/Ab-68bpm/<stem>.wav
+```
+
+Not implemented in V1. When you add it, invalidate the cache on stem file mtime or content hash.
+
+---
+
 ## Roadmap
 
 ### Near-term
 - [ ] Two-pass loudness normalization for stems with high dynamic range
 - [ ] `--dry-run` flag that logs what would be done without writing files
 - [ ] Progress bar for normalization (especially useful with WASM backend)
-- [ ] Support for song folders that already have stems directly (no `stems/` subdir)
+- [ ] Normalized stem caching (see above) keyed to song + key + bpm
 
-### Web App (medium-term)
-The architecture is already designed for this. What's needed:
+### Planning Center Integration (medium-term, high leverage)
+
+This is worth prioritizing before the browser app — it largely sidesteps the distribution problem entirely.
+
+**What's available in the PCO API:**
+- `GET /services/v2/service_types/{id}/plans/{id}/items` — read next Sunday's setlist
+- `POST /services/v2/songs/{id}/arrangements/{id}/keys/{id}/attachments` — upload a file at the key level
+- Attachments can be key-specific, so `full.m4a` in Ab doesn't collide with `full.m4a` in Bb
+- The PCO Services mobile app shows these attachments directly to team members
+
+**Why this sidesteps the browser app concern:**
+If the tool can automatically upload generated mixes to PCO as song attachments, team members access them through the PCO Services app — which they're already using for chord charts and lyrics. No link to share, no file to distribute, no browser app needed for the end-user step.
+
+**Required setup (no server needed for single-church use):**
+1. Register a PCO developer app at [developer.planning.center](https://developer.planning.center) (free)
+2. Generate a Personal Access Token (PAT) for the church's PCO account
+3. Store in `.env`: `PCO_APP_ID=xxx` and `PCO_SECRET=yyy`
+4. Add `--upload-pco` flag to `process-queue`
+
+A server is only needed if you want multiple different churches/users to authenticate independently (OAuth2 flow). For Elijah's single church, PAT is sufficient.
+
+**Proposed V2 workflow:**
+```
+# worship leader drops zips in queue/, then:
+npm run mix -- process-queue --upload-pco
+
+# tool: extracts → mixes → uploads each mix as a PCO key-level attachment
+# team opens PCO Services app and sees the mixes next to chord charts
+```
+
+**PCO storage cost:** $1/GB beyond the free tier. Five mixes × ~30MB each × 10 songs/week = ~1.5GB/month. Worth checking current PCO plan limits.
+
+**Known gap:** There is no PCO API or Multitracks API for downloading stems programmatically. Zip downloads from multitracks.com are still manual. The queue workflow is currently the best automation available for that step.
+
+### Web App (lower priority if PCO integration ships)
+If the PCO upload path works, the web app's main value shifts from "distribution" to "self-service by individual team members who want custom mix levels." That's a narrower audience. Deprioritize relative to PCO integration unless team members ask for it.
+
+If the web app does happen:
 1. Adapt `WasmFFmpegBackend` I/O for browser (File API in, Blob download out)
-2. Build a minimal frontend (Vite + React or plain HTML) that:
-   - Accepts a zip file via drag-drop
-   - Shows classified stems and lets user adjust gains
-   - Triggers the pipeline and offers output files for download
+2. Build a minimal frontend (Vite + React or plain HTML) with drag-drop zip input
 3. No server required — everything runs client-side
-
-### Planning Center Integration (longer-term)
-Planning Center has a public API. A potential flow:
-- Read the upcoming service plan from PCO API
-- Match song titles to available zip files or a cloud stem library
-- Auto-generate mixes for all songs in the plan
-- Upload or share resulting mix files
-This would likely require a small server (for PCO OAuth) but the mixing could remain client-side.
 
 ---
 

@@ -19,12 +19,14 @@ program
   .description('Process a song directory and generate all configured practice mixes')
   .option('-o, --output <dir>', 'output directory (default: <song-dir>/output/<key>-<bpm>bpm/)')
   .option('-s, --stems <subdir>', 'stems subdirectory name (auto-detected if omitted)')
-  .action(async (songDir: string, options: { output?: string; stems?: string }) => {
+  .option('--archive', 'move existing output files to a timestamped archive folder before writing new ones')
+  .action(async (songDir: string, options: { output?: string; stems?: string; archive?: boolean }) => {
     try {
       await runPipeline({
         songDir: path.resolve(songDir),
         outputDir: options.output ? path.resolve(options.output) : undefined,
         stemsDirName: options.stems,
+        archive: options.archive,
       });
     } catch (err) {
       console.error('\nError:', err instanceof Error ? err.message : String(err));
@@ -46,10 +48,8 @@ program
         process.exit(1);
       }
       const songsDir = path.resolve(options.songsDir);
-      console.log(`Extracting ${path.basename(resolved)}...`);
       const result = extractMultitrackZip(resolved, songsDir);
-      console.log(`Done! ${result.stemCount} stems extracted to:`);
-      console.log(`  ${result.songDir}`);
+      console.log(`\nExtracted to: ${result.songDir}`);
       console.log('');
       console.log('To generate mixes, run:');
       console.log(`  npm run mix -- mix "${result.songDir}"`);
@@ -66,28 +66,31 @@ program
   .description('Extract a Multitracks zip and immediately generate all practice mixes')
   .option('-d, --songs-dir <dir>', 'parent directory for song folders', 'songs')
   .option('-o, --output <dir>', 'override output directory')
-  .action(async (zipPath: string, options: { songsDir: string; output?: string }) => {
-    try {
-      const resolved = path.resolve(zipPath);
-      if (!fs.existsSync(resolved)) {
-        console.error(`File not found: ${resolved}`);
+  .option('--archive', 'archive existing output before writing new files')
+  .action(
+    async (zipPath: string, options: { songsDir: string; output?: string; archive?: boolean }) => {
+      try {
+        const resolved = path.resolve(zipPath);
+        if (!fs.existsSync(resolved)) {
+          console.error(`File not found: ${resolved}`);
+          process.exit(1);
+        }
+        const songsDir = path.resolve(options.songsDir);
+
+        const result = extractMultitrackZip(resolved, songsDir);
+        console.log(`\nExtracted to: ${result.songDir}\n`);
+
+        await runPipeline({
+          songDir: result.songDir,
+          outputDir: options.output ? path.resolve(options.output) : undefined,
+          archive: options.archive,
+        });
+      } catch (err) {
+        console.error('\nError:', err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
-      const songsDir = path.resolve(options.songsDir);
-
-      console.log(`Extracting ${path.basename(resolved)}...`);
-      const result = extractMultitrackZip(resolved, songsDir);
-      console.log(`Extracted ${result.stemCount} stems to ${result.songDir}\n`);
-
-      await runPipeline({
-        songDir: result.songDir,
-        outputDir: options.output ? path.resolve(options.output) : undefined,
-      });
-    } catch (err) {
-      console.error('\nError:', err instanceof Error ? err.message : String(err));
-      process.exit(1);
     }
-  });
+  );
 
 // ─── process-queue ────────────────────────────────────────────────────────────
 
@@ -97,8 +100,14 @@ program
   .option('-q, --queue-dir <dir>', 'directory to watch for zip files', 'queue')
   .option('-p, --processed-dir <dir>', 'directory to move completed zips into', 'processed')
   .option('-d, --songs-dir <dir>', 'parent directory for song folders', 'songs')
+  .option('--archive', 'archive existing output before writing new files')
   .action(
-    async (options: { queueDir: string; processedDir: string; songsDir: string }) => {
+    async (options: {
+      queueDir: string;
+      processedDir: string;
+      songsDir: string;
+      archive?: boolean;
+    }) => {
       const queueDir = path.resolve(options.queueDir);
       const processedDir = path.resolve(options.processedDir);
       const songsDir = path.resolve(options.songsDir);
@@ -114,7 +123,11 @@ program
         return;
       }
 
-      console.log(`Found ${zips.length} zip(s) in queue\n`);
+      // Preview the queue before starting
+      console.log(`Queue: ${zips.length} song(s) to process`);
+      zips.forEach((z, i) => console.log(`  ${i + 1}. ${path.basename(z, '.zip')}`));
+      console.log('');
+
       fs.mkdirSync(processedDir, { recursive: true });
 
       let passed = 0;
@@ -123,12 +136,12 @@ program
       for (const zipFile of zips) {
         const zipPath = path.join(queueDir, zipFile);
         console.log(`${'─'.repeat(60)}`);
-        console.log(`Processing: ${zipFile}`);
+        console.log(`Processing: ${zipFile}\n`);
 
         try {
           const result = extractMultitrackZip(zipPath, songsDir);
-          console.log(`Extracted ${result.stemCount} stems\n`);
-          await runPipeline({ songDir: result.songDir });
+          console.log(`\nExtracted to: ${result.songDir}\n`);
+          await runPipeline({ songDir: result.songDir, archive: options.archive });
           fs.renameSync(zipPath, path.join(processedDir, zipFile));
           console.log(`Moved to processed/`);
           passed++;

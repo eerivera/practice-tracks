@@ -46,7 +46,7 @@ export function extractMultitrackZip(zipPath: string, songsDir: string): Extract
   if (stemEntries.length === 0) {
     throw new Error(
       `No stems found in ${path.basename(zipPath)}.\n` +
-      `Expected audio files inside a MultiTracks/ subdirectory within the zip.`
+        `Expected audio files inside a MultiTracks/ subdirectory within the zip.`
     );
   }
 
@@ -56,8 +56,11 @@ export function extractMultitrackZip(zipPath: string, songsDir: string): Extract
   const stemsDir = path.join(songDir, 'stems');
   fs.mkdirSync(stemsDir, { recursive: true });
 
+  console.log(`Extracting ${stemEntries.length} stems...`);
   for (const entry of stemEntries) {
+    process.stdout.write(`  ${entry.name}...`);
     writeFileSync(path.join(stemsDir, entry.name), entry.getData());
+    process.stdout.write(' done\n');
   }
 
   // Copy album art if present

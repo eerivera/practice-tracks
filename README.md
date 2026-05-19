@@ -43,7 +43,7 @@ npm install
 
 You only need to do all of this once.
 
-> **Tip:** In Terminal, you can press the `Tab` key after typing a few characters of a file or folder name to auto-complete it. For example, type `queue/Who` and press Tab to fill in the rest without typing the whole name. If nothing happens, press Tab twice to see all matching options.
+> **Tip:** In Terminal, you can press the `Tab` key after typing a few characters of a file or folder name to auto-complete it. For example, type `queue/Who` and press Tab to fill in the rest without typing the whole name. If nothing happens, press Tab twice to see all matching options. You can also use a wildcard — `songs/Who*` will match any folder whose name starts with "Who," which saves a lot of typing for long Multitracks filenames.
 
 ---
 
@@ -55,7 +55,11 @@ The fastest way to go from a zip file to finished mixes is the `process` command
 npm run mix -- process "queue/Song Name.zip"
 ```
 
-This extracts the stems and generates all mixes in a single step. Your mixes will appear in `songs/Song Name/output/Ab-68bpm/` (the key and BPM are read from the zip filename automatically).
+This extracts the stems and generates all mixes in a single step. If you've already run this song before and want to keep the previous mixes before overwriting, add `--archive`:
+
+```
+npm run mix -- process "queue/Song Name.zip" --archive
+``` Your mixes will appear in `songs/Song Name/output/Ab-68bpm/` (the key and BPM are read from the zip filename automatically).
 
 ---
 

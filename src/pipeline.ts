@@ -15,6 +15,7 @@ export interface PipelineOptions {
   songDir: string;
   outputDir?: string;
   stemsDirName?: string;
+  archive?: boolean;
 }
 
 function findStemsDir(songDir: string, preferred?: string): string {
@@ -25,9 +26,29 @@ function findStemsDir(songDir: string, preferred?: string): string {
   }
   throw new Error(
     `No stems directory found in ${songDir}.\n` +
-    `Expected one of: ${CANDIDATE_STEMS_DIRS.join(', ')}\n` +
-    `Run "npm run mix -- extract <zip>" to prepare a song from a Multitracks zip.`
+      `Expected one of: ${CANDIDATE_STEMS_DIRS.join(', ')}\n` +
+      `Run "npm run mix -- extract <zip>" to prepare a song from a Multitracks zip.`
   );
+}
+
+function archiveTimestamp(): string {
+  // "2026-05-19-133042"
+  return new Date().toISOString().replace('T', '-').replace(/:/g, '').slice(0, 17);
+}
+
+function archiveExistingOutput(outputDir: string): void {
+  if (!fs.existsSync(outputDir)) return;
+  const existing = fs.readdirSync(outputDir).filter(
+    (f) => !fs.statSync(path.join(outputDir, f)).isDirectory()
+  );
+  if (existing.length === 0) return;
+
+  const archiveDir = path.join(outputDir, 'archive', archiveTimestamp());
+  fs.mkdirSync(archiveDir, { recursive: true });
+  for (const file of existing) {
+    fs.copyFileSync(path.join(outputDir, file), path.join(archiveDir, file));
+  }
+  console.log(`Archived ${existing.length} previous mix(es) to ${path.relative(process.cwd(), archiveDir)}`);
 }
 
 export async function runPipeline(options: PipelineOptions): Promise<void> {
@@ -46,6 +67,10 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   console.log(`Output: ${outputDir}`);
   console.log('');
 
+  if (options.archive) {
+    archiveExistingOutput(outputDir);
+  }
+
   fs.mkdirSync(outputDir, { recursive: true });
 
   const config = loadConfig(songDir);
@@ -61,6 +86,17 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   }
 
   const stems = classifyStems(stemFiles);
+
+  const unknownStems = stems.filter((s) => s.category === 'unknown');
+  if (unknownStems.length > 0) {
+    console.warn(
+      `Warning: ${unknownStems.length} stem(s) could not be classified and will be included at 0 dB:`
+    );
+    for (const s of unknownStems) {
+      console.warn(`  ${s.filename}${path.extname(s.path)} — add a rule in config or rename the file`);
+    }
+    console.warn('');
+  }
 
   console.log(`Found ${stems.length} stems:`);
   for (const stem of stems) {
