@@ -16,6 +16,17 @@ export interface PipelineOptions {
   outputDir?: string;
   stemsDirName?: string;
   archive?: boolean;
+  force?: boolean;
+}
+
+export interface PipelineResult {
+  skipped: boolean;
+  outputDir: string;
+}
+
+function outputAlreadyExists(outputDir: string, mixNames: string[], format: string): boolean {
+  if (!fs.existsSync(outputDir)) return false;
+  return mixNames.every((name) => fs.existsSync(path.join(outputDir, `${name}.${format}`)));
 }
 
 function findStemsDir(songDir: string, preferred?: string): string {
@@ -51,7 +62,7 @@ function archiveExistingOutput(outputDir: string): void {
   console.log(`Archived ${existing.length} previous mix(es) to ${path.relative(process.cwd(), archiveDir)}`);
 }
 
-export async function runPipeline(options: PipelineOptions): Promise<void> {
+export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
   const { songDir } = options;
   const stemsDir = findStemsDir(songDir, options.stemsDirName);
 
@@ -61,6 +72,15 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   const subdir = formatOutputSubdir(meta);
   const outputDir =
     options.outputDir ?? path.join(songDir, 'output', ...(subdir ? [subdir] : []));
+
+  const config = loadConfig(songDir);
+  const mixNames = config.mixes.map((m) => m.name);
+
+  if (!options.force && outputAlreadyExists(outputDir, mixNames, config.output_format)) {
+    console.log(`[skip] ${path.basename(songDir)} — output already exists at ${path.relative(process.cwd(), outputDir)}`);
+    console.log(`       Set "force": true in queues/to-mix.json, or pass --force to override.\n`);
+    return { skipped: true, outputDir };
+  }
 
   console.log(`Song:   ${path.basename(songDir)}`);
   console.log(`Stems:  ${stemsDir}`);
@@ -73,7 +93,6 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
 
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const config = loadConfig(songDir);
   const backend = await createBackend();
 
   const stemFiles = fs
@@ -143,4 +162,6 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+
+  return { skipped: false, outputDir };
 }

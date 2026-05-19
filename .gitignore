@@ -2,14 +2,19 @@ node_modules/
 dist/
 .DS_Store
 
-# Generated audio output — not committed
+# Generated audio — not committed
 songs/*/output/
 songs/*/stems/
 
 # Zip files are large — not committed
-queue/*.zip
-processed/*.zip
+queue-zips/*.zip
+processed-zips/*.zip
 
-# Temp files from pipeline
-tmp/
-*.tmp
+# Runtime queue state — not committed (edit these manually to set force: true)
+queues/to-mix.json
+queues/to-upload.json
+
+# PCO credentials — never commit
+.env
+.env.*
+!.env.example

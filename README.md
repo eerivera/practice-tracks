@@ -2,23 +2,19 @@
 
 Automatically generate rehearsal mixes from your Multitracks stems.
 
-Drop in a zip file, run one command, and get back a folder of mixes — full mix, no-click, drummer mix, vocalist mix, and more — each one ready to share with your team.
+Drop zip files into the `queue-zips/` folder, run one command, and get back a set of mixes for each song — full mix, no-click, drummer mix, vocalist mix — saved and ready to share.
 
 ---
 
 ## Before You Start (One-Time Setup)
 
-You'll need two things installed on your Mac. Open the **Terminal** app (it's in Applications → Utilities) and run these commands one at a time.
+Open the **Terminal** app (Applications → Utilities) and run these commands one at a time.
 
 ### 1. Install Homebrew
-
-Homebrew is a tool that makes it easy to install other software on a Mac. If you've never installed it:
 
 ```
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
-
-Follow the prompts. It will ask for your Mac password.
 
 ### 2. Install Node.js
 
@@ -28,7 +24,7 @@ brew install node
 
 ### 3. Install FFmpeg (Recommended for Speed)
 
-FFmpeg is the audio engine that does the actual mixing. It's optional — the tool works without it — but with FFmpeg installed, each song processes in about 10 seconds instead of 1–2 minutes.
+Optional, but with FFmpeg installed each song processes in ~10 seconds instead of ~2 minutes.
 
 ```
 brew install ffmpeg
@@ -41,59 +37,68 @@ cd /path/to/practice-tracks
 npm install
 ```
 
-You only need to do all of this once.
-
-> **Tip:** In Terminal, you can press the `Tab` key after typing a few characters of a file or folder name to auto-complete it. For example, type `queue/Who` and press Tab to fill in the rest without typing the whole name. If nothing happens, press Tab twice to see all matching options. You can also use a wildcard — `songs/Who*` will match any folder whose name starts with "Who," which saves a lot of typing for long Multitracks filenames.
+> **Tip:** In Terminal, press `Tab` after typing a few characters of a path to auto-complete it. For example, type `queue-zips/Who` and press Tab to fill in the rest. You can also use a wildcard — `songs/Who*` matches any folder starting with "Who," which saves a lot of typing for long Multitracks filenames.
 
 ---
 
-## Quick Start
+## Typical Weekly Workflow
 
-The fastest way to go from a zip file to finished mixes is the `process` command:
+1. Download your song zips from [Multitracks.com](https://multitracks.com) and put them in `queue-zips/`
+2. Run:
+   ```
+   npm run mix -- run
+   ```
+3. Find your mixes in `songs/<Song Name>/output/<Key>-<BPM>bpm/`
 
-```
-npm run mix -- process "queue/Song Name.zip"
-```
-
-This extracts the stems and generates all mixes in a single step. If you've already run this song before and want to keep the previous mixes before overwriting, add `--archive`:
-
-```
-npm run mix -- process "queue/Song Name.zip" --archive
-``` Your mixes will appear in `songs/Song Name/output/Ab-68bpm/` (the key and BPM are read from the zip filename automatically).
+That's it. The `run` command extracts, mixes, and (once configured) uploads to Planning Center automatically.
 
 ---
 
-## Step-by-Step Commands
+## Commands
 
-If you prefer to run things separately — for example, to inspect the stems before mixing — you can use the individual commands:
-
-### Extract a Song
-
-```
-npm run mix -- extract "queue/Song Name.zip"
-```
-
-This sets up `songs/Song Name/stems/` with all the audio files.
-
-### Generate Mixes
+### `run` — Full pipeline
+Extracts all new zips, mixes all queued songs, and uploads to Planning Center (if configured).
 
 ```
-npm run mix -- mix "songs/Song Name"
+npm run mix -- run
+npm run mix -- run --force     # re-mix and re-upload everything, ignore skip logic
+npm run mix -- run --mix-only  # skip the upload step
+npm run mix -- run --archive   # save previous mixes before overwriting
 ```
 
-### Preview Stems Without Processing
+### `status` — Show what's queued
+```
+npm run mix -- status
+```
 
+### `extract` — Extract zips into stems
+```
+npm run mix -- extract                         # extract all new zips in queue-zips/
+npm run mix -- extract "queue-zips/Song.zip"   # extract one specific zip
+```
+
+### `mix` — Generate mixes
+```
+npm run mix -- mix                             # mix all songs in the mix queue
+npm run mix -- mix "songs/Song Name"           # mix one specific song
+npm run mix -- mix --force                     # re-mix even if output exists
+```
+
+### `process` — Extract + mix in one step
+```
+npm run mix -- process "queue-zips/Song.zip"
+```
+
+### `list-stems` — Preview stem classification (dry run)
 ```
 npm run mix -- list-stems "songs/Song Name"
 ```
 
-Shows each track and how it was classified, without doing any audio work.
-
 ---
 
-## Output Files
+## Output Structure
 
-Mixes are saved to `songs/<Song Name>/output/<Key>-<BPM>bpm/`:
+Mixes are saved to `songs/<Song Name>/output/<Key>-<BPM>bpm/` so mixes for different keys never get mixed up:
 
 ```
 songs/
@@ -107,89 +112,64 @@ songs/
         vocalist.m4a
 ```
 
-The key and BPM subfolder prevents you from accidentally using mixes from one key as a stand-in for another.
-
-| File | What it is |
+| Mix file | What it contains |
 |---|---|
-| `full.m4a` | All stems, balanced for general listening |
-| `no-click.m4a` | Full mix without the click track |
-| `no-guide.m4a` | Full mix without the guide vocal |
+| `full.m4a` | All stems, balanced |
+| `no-click.m4a` | Full mix without click track |
+| `no-guide.m4a` | Full mix without guide vocal |
 | `drummer.m4a` | Click + rhythm section + quiet guide |
 | `vocalist.m4a` | No click, louder guide and backing vocals |
 
 ---
 
-## Processing a Weekly Set (Queue Workflow)
+## Queue Files
 
-If you have multiple songs to prepare at once, drop all your zip files into the `queue/` folder and run:
+The tool tracks work-in-progress across runs using two files in `queues/`:
 
+**`queues/to-mix.json`** — songs extracted but not yet mixed:
+```json
+[
+  {
+    "songDir": "songs/Who Else-Crowns Down (Live)-Ab-68.00bpm",
+    "zipPath": "queue-zips/Who Else-Crowns Down (Live)-Ab-68.00bpm.zip",
+    "addedAt": "2026-05-19T14:00:00.000Z",
+    "force": false
+  }
+]
 ```
-npm run mix -- process-queue
+
+**`queues/to-upload.json`** — songs mixed but not yet uploaded to Planning Center:
+```json
+[
+  {
+    "songDir": "songs/Who Else-Crowns Down (Live)-Ab-68.00bpm",
+    "outputDir": "songs/Who Else-Crowns Down (Live)-Ab-68.00bpm/output/Ab-68bpm",
+    "addedAt": "2026-05-19T14:05:00.000Z",
+    "force": false
+  }
+]
 ```
 
-This processes every zip in `queue/` one by one. When a song finishes successfully, its zip is moved to `processed/` automatically. If one song fails, the rest still run.
-
-```
-queue/
-  Song A.zip        ← put zips here
-  Song B.zip
-
-processed/
-  Song A.zip        ← moved here after success
-```
+To force a specific song to re-mix on the next `run`, open `queues/to-mix.json` and change its `"force"` to `true`. The `--force` flag on the command line forces everything in that run.
 
 ---
 
 ## Customizing the Mix
 
-### Adjusting the Default Balance
+Edit `config/default_mix.yaml` to change gain levels or add mix types. All numbers are in dB — negative is quieter, positive is louder.
 
-Open `config/default_mix.yaml` in any text editor. Each instrument type has a `gain_db` value — positive numbers are louder, negative are quieter. Change the values and re-run the mix command.
-
-```yaml
-track_rules:
-  click:
-    gain_db: -10    # reduce this to make the click even quieter
-  guide:
-    gain_db: 2      # increase this if the guide is hard to hear
-```
-
-### Per-Song Overrides
-
-To tweak just one song without changing the global defaults, create a `mix.yaml` file inside that song's folder. It only needs the values you want to change:
-
-```yaml
-# songs/My Song/mix.yaml
-track_rules:
-  guide:
-    gain_db: 5
-```
-
-### Output Format
-
-The default format is M4A. To change to MP3 or WAV, edit `config/default_mix.yaml`:
-
-```yaml
-output_format: mp3   # or wav
-```
+For per-song overrides, create `songs/<name>/mix.yaml` with only the values you want to change.
 
 ---
 
 ## Troubleshooting
 
-**"FFmpeg not found in PATH"** — The tool is running in slower mode. Run `brew install ffmpeg` for full speed.
+**"FFmpeg not found in PATH"** — running in slower mode. Fix: `brew install ffmpeg`.
 
-**"No stems directory found"** — Make sure you ran `extract` or `process` first, or that the song folder has a `stems/` subfolder with `.m4a` files in it.
+**"No stems directory found"** — run `extract` or `process` first.
 
-**A stem shows as `unknown` in the list** — The tool didn't recognize the track name. You can rename the file to match a known pattern (e.g. rename `Gtr.m4a` to `EG.m4a`) or ask your maintainer to add the pattern.
+**A stem shows as `unknown`** — the tool didn't recognize its filename. Rename it to match a known pattern (e.g. `Gtr.m4a` → `EG.m4a`) or ask your maintainer to add the pattern.
 
-**The mixes sound unbalanced** — Adjust the `gain_db` values in `config/default_mix.yaml`. Each number is in decibels: `-3` is roughly half as loud, `+3` is roughly twice as loud.
+**Lost a queue file** — if `queues/to-mix.json` is gone, move the zip from `processed-zips/` back to `queue-zips/` and run `extract` again. If `queues/to-upload.json` is gone, re-run `mix` on the affected songs.
 
-**A song in the queue failed** — The error message is printed to the terminal. The zip stays in `queue/` (it is not moved to `processed/`) so you can fix the issue and re-run.
-
----
-
-## Known Limitations (V1)
-
-- Stems are normalized before mixing but the final mix level is not re-normalized. If a mix is very loud or quiet, adjust the individual stem gains in the config.
-- The `extract` / `process` / `process-queue` commands expect zips in the standard Multitracks.com format (a top-level folder containing a `MultiTracks/` subdirectory).
+**PCO upload says "not yet implemented"** — PCO upload is coming soon. See your maintainer.
