@@ -6,8 +6,9 @@ dist/
 songs/*/output/
 songs/*/stems/
 
-# Source zip files are large — store externally
-track-zips/*.zip
+# Zip files are large — not committed
+queue/*.zip
+processed/*.zip
 
 # Temp files from pipeline
 tmp/

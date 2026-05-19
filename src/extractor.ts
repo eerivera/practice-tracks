@@ -1,58 +1,72 @@
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import AdmZip from 'adm-zip';
+import { writeFileSync } from 'fs';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 
-const execFileAsync = promisify(execFile);
+export interface SongMetadata {
+  key?: string;
+  bpmRaw?: string;
+}
 
 export interface ExtractResult {
   songDir: string;
   songName: string;
   stemCount: number;
+  metadata: SongMetadata;
 }
 
-// Extracts a Multitracks.com zip into songs/<song-name>/stems/
-// The zip is expected to contain a top-level folder with a MultiTracks/ subdirectory.
-export async function extractMultitrackZip(
-  zipPath: string,
-  songsDir: string
-): Promise<ExtractResult> {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-extract-'));
+// Parses key signature and BPM from a Multitracks zip/folder name.
+// Example: "Who Else-Crowns Down (Live)-Ab-68.00bpm" → { key: "Ab", bpmRaw: "68.00" }
+export function parseSongMetadata(name: string): SongMetadata {
+  const match = /[-_]([A-G][#b]?)[-_]([\d.]+)bpm$/i.exec(name);
+  if (!match) return {};
+  return { key: match[1], bpmRaw: match[2] };
+}
 
-  try {
-    await execFileAsync('unzip', ['-q', zipPath, '-d', tmpDir]);
+// Formats a subdirectory name from metadata, e.g. "Ab-68bpm".
+// Returns null if the metadata lacks key or BPM (e.g. manually organized folders).
+export function formatOutputSubdir(meta: SongMetadata): string | null {
+  if (!meta.key || !meta.bpmRaw) return null;
+  const bpm = parseFloat(meta.bpmRaw).toString(); // "68.00" → "68", "142.5" → "142.5"
+  return `${meta.key}-${bpm}bpm`;
+}
 
-    const entries = fs.readdirSync(tmpDir);
-    const topDirName = entries.find((e) =>
-      fs.statSync(path.join(tmpDir, e)).isDirectory()
+// Extracts a Multitracks.com zip into songs/<song-name>/stems/.
+// Uses adm-zip (pure JS) so it works on macOS, Windows, and Linux without system tools.
+export function extractMultitrackZip(zipPath: string, songsDir: string): ExtractResult {
+  const zip = new AdmZip(zipPath);
+  const entries = zip.getEntries();
+
+  // Stem files live at <TopDir>/MultiTracks/*.m4a inside the zip
+  const stemEntries = entries.filter(
+    (e) =>
+      !e.isDirectory &&
+      /[/\\]MultiTracks[/\\][^/\\]+\.(m4a|wav|aiff?)$/i.test(e.entryName)
+  );
+  if (stemEntries.length === 0) {
+    throw new Error(
+      `No stems found in ${path.basename(zipPath)}.\n` +
+      `Expected audio files inside a MultiTracks/ subdirectory within the zip.`
     );
-    if (!topDirName) throw new Error('No directory found in zip');
-
-    const multiTracksDir = path.join(tmpDir, topDirName, 'MultiTracks');
-    if (!fs.existsSync(multiTracksDir)) {
-      throw new Error(`No MultiTracks/ subdirectory found inside ${topDirName}`);
-    }
-
-    const songName = path.basename(zipPath, '.zip');
-    const songDir = path.join(songsDir, songName);
-    const stemsDir = path.join(songDir, 'stems');
-    fs.mkdirSync(stemsDir, { recursive: true });
-
-    const stemFiles = fs.readdirSync(multiTracksDir).filter((f) =>
-      /\.(m4a|wav|aiff?)$/i.test(f)
-    );
-    for (const stem of stemFiles) {
-      fs.copyFileSync(path.join(multiTracksDir, stem), path.join(stemsDir, stem));
-    }
-
-    const albumArt = path.join(tmpDir, topDirName, 'Album.jpg');
-    if (fs.existsSync(albumArt)) {
-      fs.copyFileSync(albumArt, path.join(songDir, 'Album.jpg'));
-    }
-
-    return { songDir, songName, stemCount: stemFiles.length };
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+
+  const songName = path.basename(zipPath, '.zip');
+  const metadata = parseSongMetadata(songName);
+  const songDir = path.join(songsDir, songName);
+  const stemsDir = path.join(songDir, 'stems');
+  fs.mkdirSync(stemsDir, { recursive: true });
+
+  for (const entry of stemEntries) {
+    writeFileSync(path.join(stemsDir, entry.name), entry.getData());
+  }
+
+  // Copy album art if present
+  const albumEntry = entries.find(
+    (e) => !e.isDirectory && /^Album\.jpe?g$/i.test(e.name)
+  );
+  if (albumEntry) {
+    writeFileSync(path.join(songDir, albumEntry.name), albumEntry.getData());
+  }
+
+  return { songDir, songName, stemCount: stemEntries.length, metadata };
 }

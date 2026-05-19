@@ -5,6 +5,7 @@ import { createBackend } from './backend/factory.js';
 import { loadConfig } from './config/loader.js';
 import { classifyStems } from './stems/classifier.js';
 import { buildMixInputs } from './mixer.js';
+import { parseSongMetadata, formatOutputSubdir } from './extractor.js';
 import { type ClassifiedStem } from './types.js';
 
 const AUDIO_EXTENSIONS = /\.(m4a|wav|mp3|aiff?)$/i;
@@ -32,7 +33,13 @@ function findStemsDir(songDir: string, preferred?: string): string {
 export async function runPipeline(options: PipelineOptions): Promise<void> {
   const { songDir } = options;
   const stemsDir = findStemsDir(songDir, options.stemsDirName);
-  const outputDir = options.outputDir ?? path.join(songDir, 'output');
+
+  // Derive output subdirectory from key/bpm in the folder name, e.g. "output/Ab-68bpm/"
+  // Falls back to "output/" for manually organized folders without that pattern.
+  const meta = parseSongMetadata(path.basename(songDir));
+  const subdir = formatOutputSubdir(meta);
+  const outputDir =
+    options.outputDir ?? path.join(songDir, 'output', ...(subdir ? [subdir] : []));
 
   console.log(`Song:   ${path.basename(songDir)}`);
   console.log(`Stems:  ${stemsDir}`);
