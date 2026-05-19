@@ -57,11 +57,17 @@ export function extractMultitrackZip(zipPath: string, songsDir: string): Extract
   fs.mkdirSync(stemsDir, { recursive: true });
 
   console.log(`Extracting ${stemEntries.length} stems...`);
+  const extractStart = Date.now();
   for (const entry of stemEntries) {
+    const t = Date.now();
     process.stdout.write(`  ${entry.name}...`);
     writeFileSync(path.join(stemsDir, entry.name), entry.getData());
-    process.stdout.write(' done\n');
+    const ms = Date.now() - t;
+    process.stdout.write(` done (${(ms / 1000).toFixed(1)}s)\n`);
   }
+  const totalMs = Date.now() - extractStart;
+  const totalSec = (totalMs / 1000).toFixed(1);
+  console.log(`Extraction complete (${totalSec}s total)`);
 
   // Copy album art if present
   const albumEntry = entries.find(

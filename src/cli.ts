@@ -267,6 +267,13 @@ program
       const globalForce = options.force ?? false;
       const archive = options.archive ?? false;
       const songsDir = resolvedPath(options.songsDir);
+      const runStart = Date.now();
+      const elapsedRun = (): string => {
+        const ms = Date.now() - runStart;
+        return ms >= 60_000
+          ? `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`
+          : `${(ms / 1000).toFixed(1)}s`;
+      };
 
       // ── Step 1: extract new zips ──────────────────────────────────────────
       if (fs.existsSync(QUEUE_ZIPS_DIR)) {
@@ -336,6 +343,8 @@ program
       } else {
         console.log('Upload queue empty — nothing to upload.');
       }
+
+      console.log(`\nRun complete in ${elapsedRun()}.`);
     }
   );
 

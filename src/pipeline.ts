@@ -9,6 +9,13 @@ import { parseSongMetadata, formatOutputSubdir } from './extractor.js';
 import { type ClassifiedStem } from './types.js';
 
 const AUDIO_EXTENSIONS = /\.(m4a|wav|mp3|aiff?)$/i;
+
+function elapsed(startMs: number): string {
+  const ms = Date.now() - startMs;
+  return ms >= 60_000
+    ? `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`
+    : `${(ms / 1000).toFixed(1)}s`;
+}
 const CANDIDATE_STEMS_DIRS = ['stems', 'MultiTracks'];
 
 export interface PipelineOptions {
@@ -125,26 +132,28 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   }
   console.log('');
 
+  const pipelineStart = Date.now();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-'));
 
   try {
     console.log(`Normalizing to ${config.target_lufs} LUFS...`);
+    const normalizeStart = Date.now();
     const normalizedStems: ClassifiedStem[] = [];
 
     for (const stem of stems) {
       const tmpPath = path.join(tmpDir, `${stem.filename}.wav`);
+      const t = Date.now();
       process.stdout.write(`  ${stem.filename}...`);
       await backend.normalize(stem.path, tmpPath, {
         targetLufs: config.target_lufs,
         truePeak: -1,
       });
       normalizedStems.push({ ...stem, path: tmpPath });
-      process.stdout.write(' done\n');
+      process.stdout.write(` done (${elapsed(t)})\n`);
     }
+    console.log(`Normalization complete (${elapsed(normalizeStart)} total)\n`);
 
-    console.log('');
     console.log('Generating mixes...');
-
     for (const mixDef of config.mixes) {
       const inputs = buildMixInputs(normalizedStems, mixDef, config);
       if (inputs.length === 0) {
@@ -152,13 +161,15 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
         continue;
       }
       const outputPath = path.join(outputDir, `${mixDef.name}.${config.output_format}`);
+      const t = Date.now();
       process.stdout.write(`  ${mixDef.name} (${inputs.length} stems)...`);
       await backend.mix(inputs, outputPath, config.output_format);
-      process.stdout.write(` done\n`);
+      process.stdout.write(` done (${elapsed(t)})\n`);
     }
 
     console.log('');
     console.log(`All mixes written to: ${outputDir}`);
+    console.log(`Total time: ${elapsed(pipelineStart)}`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

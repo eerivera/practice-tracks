@@ -2,9 +2,14 @@ node_modules/
 dist/
 .DS_Store
 
-# Generated audio — not committed
+# In song directories, only .yaml and .json config files are committed.
+# Audio, artwork, output, and future normalized cache are all gitignored.
 songs/*/output/
 songs/*/stems/
+songs/*/normalized/
+songs/*/*.jpg
+songs/*/*.jpeg
+songs/*/*.png
 
 # Zip files are large — not committed
 queue-zips/*.zip
