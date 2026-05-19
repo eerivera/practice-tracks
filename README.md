@@ -146,3 +146,21 @@ track_rules:
 **The mixes sound unbalanced** — adjust the `gain_db` values in `config/default_mix.yaml`. Each step of 3 dB is roughly twice as loud or half as quiet.
 
 **Something went wrong mid-run** — run `npm run mix -- status` to see where things are. If needed, contact your maintainer.
+
+---
+
+## Planning Center Integration (Coming Soon)
+
+Once this feature is complete, the tool will automatically upload the generated mix files to your Planning Center songs. Your team members will be able to play them directly inside the PCO Services app — alongside the chord charts and lyrics they already use — without you having to share files separately.
+
+**What you'll need to do (takes about 2 minutes):**
+
+1. Go to [api.planningcenter.com/oauth/applications](https://api.planningcenter.com/oauth/applications) and sign in with your Planning Center account.
+2. Click **New Application**.
+3. Give it a name like "Practice Tracks" — the other fields can be left blank or filled in however you like.
+4. Click **Create Application**. You'll see an **Application ID** and a **Secret**.
+5. Send both of those values to Elijah privately (a text or DM is fine — treat them like a password and don't post them publicly).
+
+That's all you need to do. Elijah takes it from there.
+
+**A note on what this access allows:** These credentials let the tool log in to Planning Center as you and attach audio files to your songs. They don't give access to anything else in your account, and they can be revoked at any time from the same page where you created them.
