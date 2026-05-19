@@ -1,0 +1,39 @@
+{
+  "name": "practice-tracks",
+  "version": "0.1.0",
+  "description": "Automated worship practice track mixing tool",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "practice-mix": "./src/cli.ts"
+  },
+  "scripts": {
+    "mix": "tsx src/cli.ts",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src tests",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc --outDir dist",
+    "check": "npm run type-check && npm run lint && npm run test"
+  },
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1",
+    "commander": "^12.1.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "tsx": "^4.15.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  },
+  "optionalDependencies": {
+    "@ffmpeg/core": "^0.12.6"
+  }
+}

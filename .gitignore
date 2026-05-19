@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.DS_Store
+
+# Generated audio output — not committed
+songs/*/output/
+songs/*/stems/
+
+# Source zip files are large — store externally
+track-zips/*.zip
+
+# Temp files from pipeline
+tmp/
+*.tmp

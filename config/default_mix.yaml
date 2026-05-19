@@ -1,0 +1,100 @@
+# Practice Track Mixing Configuration
+# =====================================
+# This file controls how all songs are mixed by default.
+# You can override any of these settings per-song by placing a mix.yaml
+# file in the song's folder (e.g. songs/My Song/mix.yaml).
+#
+# All gain values are in dB relative to the normalized stem level.
+# Positive numbers are louder; negative numbers are quieter.
+
+# Target loudness for each stem before mixing.
+# -14 LUFS is the standard for streaming platforms (Spotify, Apple Music).
+target_lufs: -14
+
+# Format for generated mix files.
+# Options: m4a  mp3  wav
+output_format: m4a
+
+# Per-stem gain adjustments applied after normalization.
+# Stems not listed here get 0 dB (no adjustment).
+track_rules:
+  click:
+    gain_db: -10      # Click is kept quiet so it doesn't dominate
+
+  guide:
+    gain_db: 2        # Guide vocal lifted slightly for rehearsal clarity
+
+  drums:
+    gain_db: 0
+
+  percussion:
+    gain_db: -2
+
+  bass:
+    gain_db: 0
+
+  synth_bass:
+    gain_db: -2
+
+  keys:
+    gain_db: -3
+
+  piano:
+    gain_db: -3
+
+  electric_guitar:
+    gain_db: -4
+
+  acoustic_guitar:
+    gain_db: -4
+
+  bgvs:
+    gain_db: -6
+
+  choir:
+    gain_db: -6
+
+  lead_vocals:
+    gain_db: 0
+
+  fx:
+    gain_db: -6
+
+  vox_fx:
+    gain_db: -8
+
+  unknown:
+    gain_db: 0        # Unrecognized stems pass through at unity gain
+
+# Mix definitions — one output file is generated per entry.
+# Each mix can exclude categories, restrict to a category subset (include_only),
+# or override gain values for specific categories within that mix.
+mixes:
+  - name: full
+    # All stems included with default gains above
+
+  - name: no-click
+    # Same as full but without the click track (good for live run-throughs)
+    exclude: [click]
+
+  - name: no-guide
+    # Full mix without the guide vocal
+    exclude: [guide]
+
+  - name: drummer
+    # Click-centric mix for the drummer: rhythm section + quiet guide reference
+    include_only: [click, drums, percussion, bass, synth_bass, guide]
+    overrides:
+      guide:
+        gain_db: -3
+
+  - name: vocalist
+    # No click, louder guide and backing vocals for singers
+    exclude: [click]
+    overrides:
+      guide:
+        gain_db: 4
+      bgvs:
+        gain_db: 0
+      choir:
+        gain_db: 0
