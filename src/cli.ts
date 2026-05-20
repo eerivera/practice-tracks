@@ -530,6 +530,71 @@ program
     }
   });
 
+// ─── clean ────────────────────────────────────────────────────────────────────
+
+program
+  .command('clean')
+  .description(
+    'Remove generated output and reset queue state.\n' +
+    'With --full, also removes extracted stems and returns zips to queue-zips/.'
+  )
+  .option('--full', 'also remove stems and move processed zips back to queue-zips/')
+  .action((options: { full?: boolean }) => {
+    let removedDirs = 0;
+
+    // Remove output subdirectories from all song folders
+    if (fs.existsSync(SONGS_DIR)) {
+      for (const entry of fs.readdirSync(SONGS_DIR)) {
+        const songDir = path.join(SONGS_DIR, entry);
+        if (!fs.statSync(songDir).isDirectory()) continue;
+
+        const outputDir = path.join(songDir, 'output');
+        if (fs.existsSync(outputDir)) {
+          fs.rmSync(outputDir, { recursive: true, force: true });
+          removedDirs++;
+        }
+
+        if (options.full) {
+          const stemsDir = path.join(songDir, 'stems');
+          if (fs.existsSync(stemsDir)) {
+            fs.rmSync(stemsDir, { recursive: true, force: true });
+          }
+          const multiTracksDir = path.join(songDir, 'MultiTracks');
+          if (fs.existsSync(multiTracksDir)) {
+            fs.rmSync(multiTracksDir, { recursive: true, force: true });
+          }
+        }
+      }
+    }
+
+    // Reset queue files
+    const queueFiles = [
+      path.join('queues', 'to-mix.json'),
+      path.join('queues', 'to-upload.json'),
+    ];
+    for (const f of queueFiles) {
+      if (fs.existsSync(f)) fs.writeFileSync(f, '[]\n');
+    }
+
+    // Move processed zips back to queue-zips/ for a full reset
+    let movedZips = 0;
+    if (options.full && fs.existsSync(PROCESSED_ZIPS_DIR)) {
+      fs.mkdirSync(QUEUE_ZIPS_DIR, { recursive: true });
+      for (const file of fs.readdirSync(PROCESSED_ZIPS_DIR).filter((f) => /\.zip$/i.test(f))) {
+        fs.renameSync(
+          path.join(PROCESSED_ZIPS_DIR, file),
+          path.join(QUEUE_ZIPS_DIR, file)
+        );
+        movedZips++;
+      }
+    }
+
+    console.log(`Removed output from ${removedDirs} song(s), reset queues.`);
+    if (options.full && movedZips > 0) {
+      console.log(`Moved ${movedZips} zip(s) back to queue-zips/.`);
+    }
+  });
+
 // ─── Suppress unused import warnings on stubbed pco functions ─────────────────
 // These are imported for future CLI wiring — they will be used when the upload
 // command is fully hooked up after PAT acquisition.

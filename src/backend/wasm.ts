@@ -38,7 +38,12 @@ async function resolveCoreConfig(): Promise<{ coreURL: string; wasmURL: string }
 }
 
 export class WasmFFmpegBackend implements AudioBackend {
+  // WASM uses a single shared FFmpeg instance with one virtual filesystem,
+  // so normalize() calls must be serialized to avoid filename collisions.
+  readonly maxConcurrency = 1;
+
   private ffmpegInstance: import('@ffmpeg/ffmpeg').FFmpeg | null = null;
+  private normalizeCallCount = 0;
 
   private async getFFmpeg(): Promise<import('@ffmpeg/ffmpeg').FFmpeg> {
     if (this.ffmpegInstance) return this.ffmpegInstance;
@@ -58,8 +63,9 @@ export class WasmFFmpegBackend implements AudioBackend {
   ): Promise<void> {
     const { fetchFile } = await import('@ffmpeg/util');
     const ffmpeg = await this.getFFmpeg();
-    const inName = 'norm_in.m4a';
-    const outName = 'norm_out.wav';
+    const id = this.normalizeCallCount++;
+    const inName = `norm_in_${id}.m4a`;
+    const outName = `norm_out_${id}.wav`;
 
     await ffmpeg.writeFile(inName, await fetchFile(inputPath));
     await ffmpeg.exec([

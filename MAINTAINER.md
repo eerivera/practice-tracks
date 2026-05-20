@@ -197,6 +197,15 @@ npm run test         # vitest unit tests (classifier, config, mixer)
 npm run check        # all three in sequence
 ```
 
+## Resetting for Testing
+
+```bash
+npm run clean         # remove songs/*/output/, reset queue files
+npm run clean:full    # also remove stems, move processed zips back to queue-zips/
+```
+
+`clean` is the fast reset for re-timing a mix run — stems stay on disk so extraction is skipped. `clean:full` starts completely fresh from the zips. Both reset `queues/to-mix.json` and `queues/to-upload.json` to empty arrays.
+
 Tests are pure unit tests — no FFmpeg, no audio files, no network.
 
 ---

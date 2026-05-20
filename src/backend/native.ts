@@ -1,5 +1,6 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import os from 'os';
 import { type MixInput } from '../types.js';
 import { type AudioBackend, type NormalizeOptions } from './interface.js';
 
@@ -11,6 +12,11 @@ function dbToAmplitude(db: number): number {
 
 export class NativeFFmpegBackend implements AudioBackend {
   constructor(private readonly ffmpegPath: string) {}
+
+  get maxConcurrency(): number {
+    // Cap at 8 — above that, disk I/O becomes the bottleneck before CPU does.
+    return Math.min(os.cpus().length, 8);
+  }
 
   async normalize(
     inputPath: string,
