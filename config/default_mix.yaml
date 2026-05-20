@@ -7,6 +7,11 @@
 # All gain values are in dB relative to the normalized stem level.
 # Positive numbers are louder; negative numbers are quieter.
 
+# Number of stems to normalize in parallel.
+# 0 means auto — uses the number of CPU cores on the machine, up to 8.
+# Reduce to 2 or 4 if you see slowdowns on an older or lower-spec Mac.
+normalization_concurrency: 0
+
 # Target loudness for each stem before mixing.
 # -14 LUFS is the standard for streaming platforms (Spotify, Apple Music).
 target_lufs: -14

@@ -31,6 +31,8 @@ export interface MixDefinition {
 export interface Config {
   target_lufs: number;
   output_format: 'm4a' | 'mp3' | 'wav';
+  // 0 or undefined → auto (backend.maxConcurrency, capped at 8 for native FFmpeg)
+  normalization_concurrency?: number;
   track_rules: Partial<Record<StemCategory, StemRule>>;
   mixes: MixDefinition[];
 }

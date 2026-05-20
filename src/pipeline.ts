@@ -136,7 +136,12 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-'));
 
   try {
-    const concurrency = Math.min(backend.maxConcurrency, stems.length);
+    const configured = config.normalization_concurrency ?? 0;
+    const concurrency = Math.min(
+      configured > 0 ? configured : backend.maxConcurrency,
+      backend.maxConcurrency, // WASM always caps at 1 regardless of config
+      stems.length
+    );
     const concurrencyNote = concurrency > 1 ? ` (${concurrency} at a time)` : '';
     console.log(`Normalizing ${stems.length} stems to ${config.target_lufs} LUFS${concurrencyNote}...`);
     const normalizeStart = Date.now();

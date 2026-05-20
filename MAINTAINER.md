@@ -156,6 +156,27 @@ PCO auth uses HTTP Basic with `base64(appId:secret)` — see `authHeader()` in `
 
 ---
 
+## Parallel Normalization
+
+Stems are normalized concurrently using a worker-queue pattern in `src/pipeline.ts`. Effective concurrency is:
+
+```
+min(config.normalization_concurrency || backend.maxConcurrency, backend.maxConcurrency, stemCount)
+```
+
+- `NativeFFmpegBackend.maxConcurrency` = `min(os.cpus().length, 8)`
+- `WasmFFmpegBackend.maxConcurrency` = `1` (shared virtual filesystem — cannot parallelize)
+- `config.normalization_concurrency = 0` means "use backend default" (auto)
+- Setting it to a positive integer in `default_mix.yaml` or `songs/<name>/mix.yaml` overrides the auto value, but can never exceed `backend.maxConcurrency`
+
+**Measured on Apple Silicon M-series (21 stems, ~6 min song):**
+- Sequential (1 worker): ~2m 38s normalization, ~2m 50s total
+- 8 workers (auto): ~32s normalization, ~43s total
+
+Per-stem times are slightly longer under parallelism (10–13s vs 7–9s) due to CPU/disk contention, but wall-clock time is ~5× better. The cap of 8 is intentional — above that, disk I/O becomes the bottleneck before additional CPU helps.
+
+If a slower machine is running the tool, reducing `normalization_concurrency` to 4 or 2 in `config/default_mix.yaml` is the first dial to turn.
+
 ## Deferred: Normalized Stem Caching
 
 Normalization is the slow step. When caching is added, cache paths must be keyed per song + key + bpm (not just song) because different keys come from different stem sets with different recorded levels:

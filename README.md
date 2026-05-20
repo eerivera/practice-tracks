@@ -133,6 +133,10 @@ track_rules:
     gain_db: 5    # guide is quiet on this recording, lift it a bit
 ```
 
+### If mixing feels slow
+
+The tool processes multiple stems at once automatically. If it seems sluggish on your machine, open `config/default_mix.yaml` and lower the `normalization_concurrency` setting from `0` (automatic) to a smaller number like `4` or `2`. Newer Macs run fastest at the automatic setting; older ones sometimes do better with fewer parallel tasks.
+
 ---
 
 ## Troubleshooting
