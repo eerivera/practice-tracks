@@ -3,11 +3,11 @@ import path from 'path';
 import os from 'os';
 import { createBackend } from './backend/factory.js';
 import { loadConfig } from './config/loader.js';
-import { classifyStems } from './stems/classifier.js';
-import { buildMixInputs } from './mixer.js';
+import { classifyStems } from '../common/stems/classifier.js';
+import { buildMixInputs } from '../common/mixer.js';
 import { parseSongMetadata, formatOutputSubdir } from './extractor.js';
-import { consoleEmitter, type Emitter } from './events.js';
-import { type ClassifiedStem } from './types.js';
+import { consoleEmitter, type Emitter } from '../common/events.js';
+import { type ClassifiedStem } from '../common/types.js';
 
 const AUDIO_EXTENSIONS = /\.(m4a|wav|mp3|aiff?)$/i;
 const CANDIDATE_STEMS_DIRS = ['stems', 'MultiTracks'];

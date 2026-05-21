@@ -4,8 +4,8 @@ import path from 'path';
 import fs from 'fs';
 import { runPipeline } from './pipeline.js';
 import { extractMultitrackZip, parseSongMetadata, formatOutputSubdir } from './extractor.js';
-import { consoleEmitter } from './events.js';
-import { classifyStems } from './stems/classifier.js';
+import { consoleEmitter } from '../common/events.js';
+import { classifyStems } from '../common/stems/classifier.js';
 import {
   getMixQueue,
   getUploadQueue,

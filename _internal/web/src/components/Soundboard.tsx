@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import type { AppConfig } from '../types.js';
+import type { Config } from '../types.js';
 
 interface Props {
-  config: AppConfig;
+  config: Config;
 }
 
 interface StemState {
@@ -19,7 +19,7 @@ function faderPct(gainDb: number): number {
   return ((Math.min(MAX_DB, Math.max(MIN_DB, gainDb)) - MIN_DB) / (MAX_DB - MIN_DB)) * 100;
 }
 
-function getStemStates(config: AppConfig, mixIndex: number): StemState[] {
+function getStemStates(config: Config, mixIndex: number): StemState[] {
   const mix = config.mixes[mixIndex];
   if (!mix) return [];
 

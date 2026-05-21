@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildMixInputs } from '../src/mixer.js';
-import { type ClassifiedStem, type Config } from '../src/types.js';
+import { buildMixInputs } from '../common/mixer.js';
+import { type ClassifiedStem, type Config } from '../common/types.js';
 
 const STEMS: ClassifiedStem[] = [
   { path: '/tmp/click.wav', filename: 'Click Track', category: 'click' },

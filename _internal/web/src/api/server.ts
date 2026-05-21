@@ -1,4 +1,4 @@
-import type { AppConfig, QueueStatus, SongOutputs } from '../types.js';
+import type { Config, QueueStatus, SongOutputs } from '../types.js';
 import type { ProcessingApi } from './interface.js';
 
 export class ServerApi implements ProcessingApi {
@@ -17,10 +17,10 @@ export class ServerApi implements ProcessingApi {
     return new EventSource(`/api/events/${sessionId}`);
   }
 
-  async getConfig(): Promise<AppConfig> {
+  async getConfig(): Promise<Config> {
     const res = await fetch('/api/config');
     if (!res.ok) throw new Error('Failed to load config');
-    return res.json() as Promise<AppConfig>;
+    return res.json() as Promise<Config>;
   }
 
   async getStatus(): Promise<QueueStatus> {

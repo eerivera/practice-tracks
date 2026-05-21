@@ -1,9 +1,9 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { type AudioBackend } from './interface.js';
+import { type AudioBackend } from '../../common/types.js';
 import { NativeFFmpegBackend } from './native.js';
 import { WasmFFmpegBackend } from './wasm.js';
-import { consoleEmitter, type Emitter } from '../events.js';
+import { consoleEmitter, type Emitter } from '../../common/events.js';
 
 const execFileAsync = promisify(execFile);
 

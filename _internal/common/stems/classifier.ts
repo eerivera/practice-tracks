@@ -1,4 +1,3 @@
-import path from 'path';
 import { type StemCategory, type ClassifiedStem } from '../types.js';
 
 // Order matters: more specific patterns must come before general ones.
@@ -24,7 +23,9 @@ const STEM_PATTERNS: Array<[RegExp, StemCategory]> = [
 const NUMBER_SUFFIX_RE = /[\s_-](\d+)(?:\s*\(.*\))?$/;
 
 export function classifyStem(filePath: string): ClassifiedStem {
-  const filename = path.basename(filePath, path.extname(filePath));
+  // Pure string ops — no `path` module so this works in both Node.js and browser.
+  const lastSegment = filePath.replace(/\\/g, '/').split('/').pop() ?? filePath;
+  const filename = lastSegment.replace(/\.[^.]+$/, '');
 
   let category: StemCategory = 'unknown';
   for (const [pattern, cat] of STEM_PATTERNS) {

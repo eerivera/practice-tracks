@@ -1,6 +1,5 @@
 import { writeFileSync } from 'fs';
-import { type MixInput } from '../types.js';
-import { type AudioBackend, type NormalizeOptions } from './interface.js';
+import { type MixInput, type AudioBackend, type NormalizeOptions } from '../../common/types.js';
 
 // NOTE: This backend is intended for browser use (no FFmpeg installation required).
 // It also works in Node.js as a fallback when FFmpeg is not installed, but is
