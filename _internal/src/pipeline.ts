@@ -5,7 +5,7 @@ import { createBackend } from './backend/factory.js';
 import { loadConfig } from './config/loader.js';
 import { classifyStems } from '../common/stems/classifier.js';
 import { buildMixInputs } from '../common/mixer.js';
-import { parseSongMetadata, formatOutputSubdir } from './extractor.js';
+import { parseSongMetadata, formatOutputSubdir, formatSongDisplayName } from './extractor.js';
 import { consoleEmitter, type Emitter } from '../common/events.js';
 import { type ClassifiedStem } from '../common/types.js';
 
@@ -26,9 +26,9 @@ export interface PipelineResult {
   mixFiles: string[];
 }
 
-function outputAlreadyExists(outputDir: string, mixNames: string[], format: string): boolean {
+function outputAlreadyExists(outputDir: string, songTitle: string, mixNames: string[], format: string): boolean {
   if (!fs.existsSync(outputDir)) return false;
-  return mixNames.every((name) => fs.existsSync(path.join(outputDir, `${name}.${format}`)));
+  return mixNames.every((name) => fs.existsSync(path.join(outputDir, `${songTitle} - ${name}.${format}`)));
 }
 
 function findStemsDir(songDir: string, preferred?: string): string {
@@ -76,9 +76,10 @@ export async function runPipeline(
     options.outputDir ?? path.join(songDir, 'output', ...(subdir ? [subdir] : []));
 
   const config = loadConfig(songDir);
+  const songTitle = formatSongDisplayName(songDir);
   const mixNames = config.mixes.map((m) => m.name);
 
-  if (!options.force && outputAlreadyExists(outputDir, mixNames, config.output_format)) {
+  if (!options.force && outputAlreadyExists(outputDir, songTitle, mixNames, config.output_format)) {
     emit({
       type: 'skip',
       songName: path.basename(songDir),
@@ -179,7 +180,7 @@ export async function runPipeline(
         emit({ type: 'mix_skipped', name: mixDef.name, reason: 'no stems match' });
         continue;
       }
-      const outputPath = path.join(outputDir, `${mixDef.name}.${config.output_format}`);
+      const outputPath = path.join(outputDir, `${songTitle} - ${mixDef.name}.${config.output_format}`);
       const t = Date.now();
       await backend.mix(inputs, outputPath, config.output_format);
       emit({ type: 'mix_generated', name: mixDef.name, stems: inputs.length, timeMs: Date.now() - t });

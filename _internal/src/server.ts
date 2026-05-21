@@ -136,6 +136,9 @@ app.get('/api/outputs', (_req: Request, res: Response) => {
     if (!fs.existsSync(outputDir) || !fs.statSync(outputDir).isDirectory()) continue;
 
     const variants: Array<{ keyBpm: string; files: Array<{ name: string; path: string }> }> = [];
+    // Strip key-bpm suffix to get the display title used as a filename prefix
+    const songTitle = songName.replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
+    const filePrefix = `${songTitle} - `;
 
     for (const variantName of fs.readdirSync(outputDir)) {
       const variantDir = path.join(outputDir, variantName);
@@ -143,10 +146,13 @@ app.get('/api/outputs', (_req: Request, res: Response) => {
 
       const files = fs.readdirSync(variantDir)
         .filter((f) => AUDIO_RE.test(f))
-        .map((f) => ({
-          name: path.basename(f, path.extname(f)),
-          path: path.join(SONGS_DIR, songName, 'output', variantName, f),
-        }));
+        .map((f) => {
+          const baseName = path.basename(f, path.extname(f));
+          return {
+            name: baseName.startsWith(filePrefix) ? baseName.slice(filePrefix.length) : baseName,
+            path: path.join(SONGS_DIR, songName, 'output', variantName, f),
+          };
+        });
 
       if (files.length > 0) variants.push({ keyBpm: variantName, files });
     }
