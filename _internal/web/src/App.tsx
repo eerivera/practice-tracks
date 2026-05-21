@@ -155,10 +155,10 @@ export function App() {
 
   const isProcessing = ['extracting', 'normalizing', 'mixing'].includes(phase);
   const showLog = phase !== 'idle' && phase !== 'files_selected';
-  // Soundboard only shown after stems have been normalised — the mixing panel
-  // is not relevant before that point.
-  const showSoundboard = config && (phase === 'normalized' || phase === 'complete');
-  const showPastMixes = !isProcessing;
+  // Soundboard appears after first normalize and stays visible — dimmed while
+  // mixing is in progress so it doesn't compete with the progress log.
+  const showSoundboard = config && ['normalized', 'mixing', 'complete'].includes(phase);
+  const soundboardDimmed = phase === 'mixing';
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
@@ -270,22 +270,22 @@ export function App() {
           </button>
         )}
 
-        {/* Soundboard — only visible after normalize so it's contextually relevant */}
+        {/* Soundboard — appears after first normalize, stays visible; dimmed during mixing */}
         {showSoundboard && (
-          <div className="space-y-2">
+          <div className={`space-y-2 transition-opacity ${soundboardDimmed ? 'opacity-40 pointer-events-none' : ''}`}>
             <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">Mix Presets</h2>
             <Soundboard config={config} />
           </div>
         )}
 
-        {/* Past mixes */}
-        {showPastMixes && (
+        {/* Past mixes — always visible; links dimmed while a step is running */}
+        <div className={`transition-opacity ${isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
           <PastMixes
             outputs={pastOutputs}
             getDownloadUrl={(p) => api.getDownloadUrl(p)}
             getVariantZipUrl={(p) => api.getVariantZipUrl(p)}
           />
-        )}
+        </div>
       </div>
     </div>
   );
