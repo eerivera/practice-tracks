@@ -4,8 +4,6 @@ import yaml from 'js-yaml';
 import { type Config } from '../../common/types.js';
 import { BUILT_IN_DEFAULTS, mergeConfig } from '../../common/config/defaults.js';
 
-export { mergeConfig } from '../../common/config/defaults.js';
-
 function loadYaml(filePath: string): Partial<Config> {
   return yaml.load(fs.readFileSync(filePath, 'utf8')) as Partial<Config>;
 }
