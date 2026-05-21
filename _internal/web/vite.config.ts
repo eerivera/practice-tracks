@@ -7,6 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  // Set by CI when building for GitHub Pages (e.g. '/practice-tracks/').
+  // Defaults to '/' for local dev and server-mode builds.
+  base: process.env['VITE_BASE'] ?? '/',
   // Proxy API and SSE requests to the Express server during development
   server: {
     proxy: {
@@ -18,7 +21,7 @@ export default defineConfig({
       '@common': path.resolve(__dirname, '../common'),
     },
   },
-  // Build-time flag: 'server' (default) or 'browser' (future static deploy)
+  // Build-time flag: 'server' (default) or 'browser' (static deploy)
   define: {
     'import.meta.env.VITE_BACKEND': JSON.stringify(
       process.env['VITE_BACKEND'] ?? 'server'
