@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import open from 'open';
+import AdmZip from 'adm-zip';
 import { runPipeline } from './pipeline.js';
 import { extractMultitrackZip } from './extractor.js';
 import { loadConfig } from './config/loader.js';
@@ -154,6 +155,41 @@ app.get('/api/outputs', (_req: Request, res: Response) => {
   }
 
   res.json(result);
+});
+
+// Zip all output files for a song and serve as a single download.
+// Encoded path is songs/<songDir> — same base64url scheme as /api/download.
+app.get('/api/download-zip/:encodedSongDir', (req: Request, res: Response) => {
+  const decoded = Buffer.from(req.params['encodedSongDir'] as string, 'base64url').toString('utf8');
+  const resolved = path.resolve(decoded);
+  const songsRoot = path.resolve(SONGS_DIR);
+
+  if (!resolved.startsWith(songsRoot)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+
+  const outputDir = path.join(resolved, 'output');
+  if (!fs.existsSync(outputDir)) {
+    res.status(404).json({ error: 'No output found for this song' });
+    return;
+  }
+
+  const AUDIO_RE = /\.(m4a|mp3|wav|aiff?)$/i;
+  const zip = new AdmZip();
+
+  for (const variant of fs.readdirSync(outputDir)) {
+    const variantDir = path.join(outputDir, variant);
+    if (!fs.statSync(variantDir).isDirectory()) continue;
+    for (const file of fs.readdirSync(variantDir)) {
+      if (AUDIO_RE.test(file)) zip.addLocalFile(path.join(variantDir, file), variant);
+    }
+  }
+
+  const displayName = path.basename(decoded).replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
+  res.setHeader('Content-Disposition', `attachment; filename="${displayName}.zip"`);
+  res.setHeader('Content-Type', 'application/zip');
+  res.send(zip.toBuffer());
 });
 
 // Serve a generated mix file for download.

@@ -35,6 +35,11 @@ export class ServerApi implements ProcessingApi {
     return res.json() as Promise<SongOutputs[]>;
   }
 
+  getSongZipUrl(songDir: string): string {
+    const encoded = btoa(`songs/${songDir}`).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return `/api/download-zip/${encoded}`;
+  }
+
   getDownloadUrl(filePath: string): string {
     const encoded = btoa(filePath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     return `/api/download/${encoded}`;

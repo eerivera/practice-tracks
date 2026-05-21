@@ -16,6 +16,9 @@ export interface ProcessingApi {
   /** List all existing mix files on disk, organised by song → variant. */
   getOutputs(): Promise<SongOutputs[]>;
 
+  /** Return a URL that triggers a zip download of all output files for a song. */
+  getSongZipUrl(songDir: string): string;
+
   /** Return a URL that triggers download of a generated mix file. */
   getDownloadUrl(filePath: string): string;
 }
