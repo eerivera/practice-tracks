@@ -125,7 +125,7 @@ program
     'With no argument, extracts all zips in queue-zips/ not already queued.'
   )
   .option('-d, --songs-dir <dir>', 'parent directory for song folders', SONGS_DIR)
-  .action(async (zipArg: string | undefined, options: { songsDir: string }) => {
+  .action((zipArg: string | undefined, options: { songsDir: string }) => {
     const songsDir = resolvedPath(options.songsDir);
 
     const zipsToProcess: string[] = zipArg
@@ -302,7 +302,7 @@ program
       // ── Step 2: mix all in to-mix queue ───────────────────────────────────
       const mixQueue = getMixQueue();
       if (mixQueue.length > 0) {
-        console.log(`${'─'.repeat(60)}`);
+        console.log('─'.repeat(60));
         console.log(`Mix queue: ${mixQueue.length} song(s)\n`);
         let mixed = 0, skipped = 0, failed = 0;
         for (const entry of mixQueue) {
@@ -327,7 +327,7 @@ program
           console.log(`Add PCO_APP_ID and PCO_SECRET to .env to enable uploads.\n`);
           return;
         }
-        console.log(`${'─'.repeat(60)}`);
+        console.log('─'.repeat(60));
         console.log(`Upload queue: ${uploadQueue.length} song(s)\n`);
         let uploaded = 0, skipped = 0, noLink = 0, failed = 0;
         for (const entry of uploadQueue) {
@@ -437,7 +437,7 @@ program
       }
 
       console.log('\nMatching songs:');
-      songs.forEach((s, i) => console.log(`  ${i + 1}. ${s.title} (id: ${s.id})`));
+      songs.forEach((s, i) => { console.log(`  ${i + 1}. ${s.title} (id: ${s.id})`); });
       const songChoice = parseInt(await ask('\nSelect a song [number]: '), 10) - 1;
       if (isNaN(songChoice) || songChoice < 0 || songChoice >= songs.length) {
         console.error('Invalid selection.');
@@ -448,7 +448,7 @@ program
 
       const arrangements = await getArrangements(chosenSong.id, creds);
       console.log('\nArrangements:');
-      arrangements.forEach((a, i) => console.log(`  ${i + 1}. ${a.name} (id: ${a.id})`));
+      arrangements.forEach((a, i) => { console.log(`  ${i + 1}. ${a.name} (id: ${a.id})`); });
       const arrChoice = parseInt(await ask('Select an arrangement [number]: '), 10) - 1;
       if (isNaN(arrChoice) || arrChoice < 0 || arrChoice >= arrangements.length) {
         console.error('Invalid selection.');
@@ -459,7 +459,7 @@ program
 
       const keys = await getKeys(chosenSong.id, chosenArr.id, creds);
       console.log('\nKeys in this arrangement:');
-      keys.forEach((k, i) => console.log(`  ${i + 1}. ${k.name || k.startingKey} (id: ${k.id})`));
+      keys.forEach((k, i) => { console.log(`  ${i + 1}. ${k.name || k.startingKey} (id: ${k.id})`); });
 
       const keyMap: Record<string, string> = {};
       for (const k of keys) {
@@ -511,7 +511,7 @@ program
   .command('list-stems <song-dir>')
   .description('Classify and list stems without processing (dry run)')
   .option('-s, --stems <subdir>', 'stems subdirectory name', 'stems')
-  .action(async (songDir: string, options: { stems: string }) => {
+  .action((songDir: string, options: { stems: string }) => {
     const stemsDir = path.join(resolvedPath(songDir), options.stems);
     if (!fs.existsSync(stemsDir)) {
       console.error(`Stems directory not found: ${stemsDir}`);

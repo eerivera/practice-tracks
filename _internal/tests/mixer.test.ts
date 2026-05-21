@@ -46,10 +46,10 @@ describe('buildMixInputs', () => {
 
   it('applies base gain from track_rules', () => {
     const inputs = buildMixInputs(STEMS, { name: 'full' }, CONFIG);
-    const click = inputs.find((i) => i.path === '/tmp/click.wav')!;
-    expect(click.gainDb).toBe(-10);
-    const guide = inputs.find((i) => i.path === '/tmp/guide.wav')!;
-    expect(guide.gainDb).toBe(2);
+    const click = inputs.find((i) => i.path === '/tmp/click.wav');
+    expect(click?.gainDb).toBe(-10);
+    const guide = inputs.find((i) => i.path === '/tmp/guide.wav');
+    expect(guide?.gainDb).toBe(2);
   });
 
   it('mix-level override takes precedence over track_rules', () => {
@@ -58,8 +58,8 @@ describe('buildMixInputs', () => {
       { name: 'custom', overrides: { guide: { gain_db: 10 } } },
       CONFIG
     );
-    const guide = inputs.find((i) => i.path === '/tmp/guide.wav')!;
-    expect(guide.gainDb).toBe(10);
+    const guide = inputs.find((i) => i.path === '/tmp/guide.wav');
+    expect(guide?.gainDb).toBe(10);
   });
 
   it('muted stems get -120 dB gain', () => {
@@ -68,8 +68,8 @@ describe('buildMixInputs', () => {
       { name: 'muted-click', overrides: { click: { gain_db: 0, mute: true } } },
       CONFIG
     );
-    const click = inputs.find((i) => i.path === '/tmp/click.wav')!;
-    expect(click.gainDb).toBe(-120);
+    const click = inputs.find((i) => i.path === '/tmp/click.wav');
+    expect(click?.gainDb).toBe(-120);
   });
 
   it('returns empty array when include_only matches nothing', () => {

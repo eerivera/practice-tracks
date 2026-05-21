@@ -44,14 +44,14 @@ export class ServerApi implements ProcessingApi {
     return res.json() as Promise<QueueStatus>;
   }
 
-  async checkOutputs(songDirs: string[]): Promise<Array<{ songDir: string; hasOutput: boolean }>> {
+  async checkOutputs(songDirs: string[]): Promise<{ songDir: string; hasOutput: boolean }[]> {
     const res = await fetch('/api/check-outputs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ songDirs }),
     });
     if (!res.ok) throw new Error('Failed to check outputs');
-    return res.json() as Promise<Array<{ songDir: string; hasOutput: boolean }>>;
+    return res.json() as Promise<{ songDir: string; hasOutput: boolean }[]>;
   }
 
   async getOutputs(): Promise<SongOutputs[]> {

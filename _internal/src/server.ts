@@ -73,7 +73,7 @@ app.get('/api/events/:sessionId', (req: Request, res: Response) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  const sessionId = req.params['sessionId'] as string;
+  const sessionId = req.params.sessionId as string;
   sessions.set(sessionId, res);
   req.on('close', () => sessions.delete(sessionId));
 });
@@ -83,9 +83,9 @@ app.get('/api/events/:sessionId', (req: Request, res: Response) => {
 app.post(
   '/api/extract',
   upload.array('zips'),
-  async (req: Request, res: Response) => {
+  (req: Request, res: Response) => {
     const { sessionId } = req.body as { sessionId: string };
-    const files = req.files as Express.Multer.File[];
+    const files = req.files as Express.Multer.File[] | undefined;
 
     if (!sessionId || !files?.length) {
       res.status(400).json({ error: 'sessionId and at least one zip file are required' });
@@ -214,16 +214,16 @@ app.get('/api/outputs', (_req: Request, res: Response) => {
   }
 
   const AUDIO_RE = /\.(m4a|mp3|wav|aiff?)$/i;
-  const result: Array<{
+  const result: {
     songDir: string;
-    variants: Array<{ keyBpm: string; files: Array<{ name: string; path: string }> }>;
-  }> = [];
+    variants: { keyBpm: string; files: { name: string; path: string }[] }[];
+  }[] = [];
 
   for (const songName of fs.readdirSync(SONGS_DIR)) {
     const outputDir = path.join(SONGS_DIR, songName, 'output');
     if (!fs.existsSync(outputDir) || !fs.statSync(outputDir).isDirectory()) continue;
 
-    const variants: Array<{ keyBpm: string; files: Array<{ name: string; path: string }> }> = [];
+    const variants: { keyBpm: string; files: { name: string; path: string }[] }[] = [];
     const songTitle = songName.replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
     const filePrefix = `${songTitle} - `;
 
@@ -252,7 +252,7 @@ app.get('/api/outputs', (_req: Request, res: Response) => {
 
 // Zip all mix files in a single key/BPM variant directory.
 app.get('/api/download-zip/:encodedVariantDir', (req: Request, res: Response) => {
-  const decoded = Buffer.from(req.params['encodedVariantDir'] as string, 'base64url').toString('utf8');
+  const decoded = Buffer.from(req.params.encodedVariantDir as string, 'base64url').toString('utf8');
   const resolved = path.resolve(decoded);
 
   if (!resolved.startsWith(SONGS_ROOT)) {
@@ -282,7 +282,7 @@ app.get('/api/download-zip/:encodedVariantDir', (req: Request, res: Response) =>
 
 // Serve a generated mix file for download.
 app.get('/api/download/:encodedPath', (req: Request, res: Response) => {
-  const decoded = Buffer.from(req.params['encodedPath'] as string, 'base64url').toString('utf8');
+  const decoded = Buffer.from(req.params.encodedPath as string, 'base64url').toString('utf8');
   const resolved = path.resolve(decoded);
 
   if (!resolved.startsWith(SONGS_ROOT)) {

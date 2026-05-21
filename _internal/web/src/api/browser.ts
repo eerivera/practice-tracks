@@ -28,7 +28,7 @@ export class BrowserApi implements ProcessingApi {
     return Promise.reject(new Error('Browser API not yet implemented'));
   }
 
-  checkOutputs(_songDirs: string[]): Promise<Array<{ songDir: string; hasOutput: boolean }>> {
+  checkOutputs(_songDirs: string[]): Promise<{ songDir: string; hasOutput: boolean }[]> {
     return Promise.reject(new Error('Browser API not yet implemented'));
   }
 

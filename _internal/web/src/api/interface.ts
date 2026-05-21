@@ -20,7 +20,7 @@ export interface ProcessingApi {
   getStatus(): Promise<QueueStatus>;
 
   /** Check which song directories already have output files (before normalize). */
-  checkOutputs(songDirs: string[]): Promise<Array<{ songDir: string; hasOutput: boolean }>>;
+  checkOutputs(songDirs: string[]): Promise<{ songDir: string; hasOutput: boolean }[]>;
 
   /** List all existing mix files on disk, organised by song → variant. */
   getOutputs(): Promise<SongOutputs[]>;

@@ -26,6 +26,6 @@ export interface SongOutputs {
 }
 
 export interface QueueStatus {
-  mixQueue: Array<{ songDir: string; force: boolean }>;
-  uploadQueue: Array<{ songDir: string; outputDir: string; force: boolean }>;
+  mixQueue: { songDir: string; force: boolean }[];
+  uploadQueue: { songDir: string; outputDir: string; force: boolean }[];
 }

@@ -31,7 +31,7 @@ export function DropZone({ onFiles, disabled }: Props) {
     <div
       onClick={() => !disabled && inputRef.current?.click()}
       onDragOver={(e) => { e.preventDefault(); if (!disabled) setDragging(true); }}
-      onDragLeave={() => setDragging(false)}
+      onDragLeave={() => { setDragging(false); }}
       onDrop={handleDrop}
       className={[
         'border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors',
