@@ -2,7 +2,7 @@ import { type StemCategory, type ClassifiedStem } from '../types.js';
 
 // Order matters: more specific patterns must come before general ones.
 // e.g. synth_bass before bass, vox_fx before fx
-const STEM_PATTERNS: Array<[RegExp, StemCategory]> = [
+const STEM_PATTERNS: [RegExp, StemCategory][] = [
   [/click/i, 'click'],
   [/guide/i, 'guide'],
   [/synth[\s_-]*bass/i, 'synth_bass'],

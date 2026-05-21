@@ -1,5 +1,6 @@
 import { writeFileSync } from 'fs';
 import { type MixInput, type AudioBackend, type NormalizeOptions } from '../../common/types.js';
+import type { FFmpeg } from '@ffmpeg/ffmpeg';
 
 // NOTE: This backend is intended for browser use (no FFmpeg installation required).
 // It also works in Node.js as a fallback when FFmpeg is not installed, but is
@@ -24,8 +25,8 @@ async function resolveCoreConfig(): Promise<{ coreURL: string; wasmURL: string }
   const { createRequire } = await import('module');
   const require = createRequire(import.meta.url);
   try {
-    const corePath = require.resolve('@ffmpeg/core/dist/umd/ffmpeg-core.js') as string;
-    const wasmPath = require.resolve('@ffmpeg/core/dist/umd/ffmpeg-core.wasm') as string;
+    const corePath = require.resolve('@ffmpeg/core/dist/umd/ffmpeg-core.js');
+    const wasmPath = require.resolve('@ffmpeg/core/dist/umd/ffmpeg-core.wasm');
     return { coreURL: `file://${corePath}`, wasmURL: `file://${wasmPath}` };
   } catch {
     throw new Error(
@@ -41,10 +42,10 @@ export class WasmFFmpegBackend implements AudioBackend {
   // so normalize() calls must be serialized to avoid filename collisions.
   readonly maxConcurrency = 1;
 
-  private ffmpegInstance: import('@ffmpeg/ffmpeg').FFmpeg | null = null;
+  private ffmpegInstance: FFmpeg | null = null;
   private normalizeCallCount = 0;
 
-  private async getFFmpeg(): Promise<import('@ffmpeg/ffmpeg').FFmpeg> {
+  private async getFFmpeg(): Promise<FFmpeg> {
     if (this.ffmpegInstance) return this.ffmpegInstance;
 
     const { FFmpeg } = await import('@ffmpeg/ffmpeg');

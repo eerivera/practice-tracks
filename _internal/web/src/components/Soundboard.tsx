@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Config } from '../types.js';
+import type { Config, StemCategory } from '../types.js';
 
 interface Props {
   config: Config;
@@ -20,15 +20,16 @@ function faderPct(gainDb: number): number {
 }
 
 function getStemStates(config: Config, mixIndex: number): StemState[] {
-  const mix = config.mixes[mixIndex];
-  if (!mix) return [];
+  const mix = config.mixes.at(mixIndex);
+  if (mix === undefined) return [];
 
   return Object.entries(config.track_rules).map(([category, rule]) => {
+    const cat = category as StemCategory;
     const excluded =
-      (mix.include_only != null && !mix.include_only.includes(category)) ||
-      (mix.exclude != null && mix.exclude.includes(category));
+      (mix.include_only != null && !mix.include_only.includes(cat)) ||
+      (mix.exclude?.includes(cat) === true);
 
-    const override = mix.overrides?.[category];
+    const override = mix.overrides?.[cat];
     return {
       category,
       gainDb: override?.gain_db ?? rule.gain_db,
@@ -86,7 +87,7 @@ export function Soundboard({ config }: Props) {
         {config.mixes.map((mix, i) => (
           <button
             key={mix.name}
-            onClick={() => setSelected(i)}
+            onClick={() => { setSelected(i); }}
             className={[
               'px-3 py-1 rounded-md text-sm font-medium transition-colors',
               i === selected

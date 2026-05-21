@@ -10,7 +10,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "paths": {
-      "@common/*": ["../../common/*"]
+      "@common/*": ["../common/*"]
     }
   },
   "include": ["src"]

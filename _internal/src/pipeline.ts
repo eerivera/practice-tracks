@@ -172,7 +172,7 @@ export async function runNormalize(
   emit({ type: 'normalize_start', total: stems.length, concurrency, targetLufs: config.target_lufs });
   const normalizeStart = Date.now();
 
-  const normalizedStems: ClassifiedStem[] = new Array(stems.length);
+  const normalizedStems: ClassifiedStem[] = new Array<ClassifiedStem>(stems.length);
   let completed = 0;
   const queue = stems.map((stem, i) => ({ stem, i }));
 

@@ -27,6 +27,7 @@ export function App() {
   const [songDirs, setSongDirs] = useState<string[]>([]);
   const [existingOutputCount, setExistingOutputCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
+  const [fileCount, setFileCount] = useState(0);
   const [showForceModal, setShowForceModal] = useState(false);
   const filesRef = useRef<File[] | null>(null);
   // One sessionId per batch — shared across all three steps so the server can
@@ -38,12 +39,6 @@ export function App() {
     api.getConfig().then(setConfig).catch(console.error);
     api.getOutputs().then(setPastOutputs).catch(console.error);
   }, []);
-
-  useEffect(() => {
-    if (phase === 'normalized' && skippedCount > 0) {
-      setShowForceModal(true);
-    }
-  }, [phase, skippedCount]);
 
   // ── SSE helpers ─────────────────────────────────────────────────────────────
 
@@ -68,6 +63,7 @@ export function App() {
 
   function handleFilesDropped(files: File[]) {
     filesRef.current = files;
+    setFileCount(files.length);
     setPhase('files_selected');
   }
 
@@ -91,13 +87,13 @@ export function App() {
         // Check for existing output now that we have song titles/keys/BPMs.
         if (extracted.length > 0) {
           api.checkOutputs(extracted)
-            .then((results) => setExistingOutputCount(results.filter((r) => r.hasOutput).length))
+            .then((results) => { setExistingOutputCount(results.filter((r) => r.hasOutput).length); })
             .catch(console.error);
         }
       }
     );
-    api.extractZips(filesRef.current, sessionIdRef.current).catch((err: Error) => {
-      setEvents((prev) => [...prev, { type: 'error', message: err.message }]);
+    api.extractZips(filesRef.current, sessionIdRef.current).catch((err: unknown) => {
+      setEvents((prev) => [...prev, { type: 'error', message: err instanceof Error ? err.message : String(err) }]);
     });
   }
 
@@ -111,10 +107,10 @@ export function App() {
     let skips = 0;
     openSse(
       (event) => { if (event.type === 'skip') skips++; },
-      () => { setSkippedCount(skips); setPhase('normalized'); }
+      () => { setSkippedCount(skips); setPhase('normalized'); if (skips > 0) setShowForceModal(true); }
     );
-    api.normalizeSongs(songDirs, sessionIdRef.current, force).catch((err: Error) => {
-      setEvents((prev) => [...prev, { type: 'error', message: err.message }]);
+    api.normalizeSongs(songDirs, sessionIdRef.current, force).catch((err: unknown) => {
+      setEvents((prev) => [...prev, { type: 'error', message: err instanceof Error ? err.message : String(err) }]);
     });
   }
 
@@ -129,8 +125,8 @@ export function App() {
         api.getOutputs().then(setPastOutputs).catch(console.error);
       }
     );
-    api.mixSongs(sessionIdRef.current).catch((err: Error) => {
-      setEvents((prev) => [...prev, { type: 'error', message: err.message }]);
+    api.mixSongs(sessionIdRef.current).catch((err: unknown) => {
+      setEvents((prev) => [...prev, { type: 'error', message: err instanceof Error ? err.message : String(err) }]);
     });
   }
 
@@ -155,9 +151,6 @@ export function App() {
 
   const isProcessing = ['extracting', 'normalizing', 'mixing'].includes(phase);
   const showLog = phase !== 'idle' && phase !== 'files_selected';
-  // Soundboard appears after first normalize and stays visible — dimmed while
-  // mixing is in progress so it doesn't compete with the progress log.
-  const showSoundboard = config && ['normalized', 'mixing', 'complete'].includes(phase);
   const soundboardDimmed = phase === 'mixing';
 
   return (
@@ -175,7 +168,7 @@ export function App() {
             </p>
             <div className="flex gap-3 justify-end pt-1">
               <button
-                onClick={() => setShowForceModal(false)}
+                onClick={() => { setShowForceModal(false); }}
                 className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm transition-colors"
               >
                 Keep existing
@@ -204,7 +197,7 @@ export function App() {
         {phase === 'files_selected' && (
           <div className="space-y-3">
             <p className="text-slate-400 text-sm">
-              {filesRef.current?.length ?? 0} zip{(filesRef.current?.length ?? 0) !== 1 ? 's' : ''} ready
+              {fileCount} zip{fileCount !== 1 ? 's' : ''} ready
             </p>
             <div className="flex gap-3">
               <button
@@ -242,13 +235,13 @@ export function App() {
                 </p>
                 <div className="flex gap-3">
                   <button
-                    onClick={() => handleNormalize(false)}
+                    onClick={() => { handleNormalize(false); }}
                     className="flex-1 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
                   >
                     Keep existing
                   </button>
                   <button
-                    onClick={() => handleNormalize(true)}
+                    onClick={() => { handleNormalize(true); }}
                     className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
                   >
                     Regenerate all
@@ -257,7 +250,7 @@ export function App() {
               </>
             ) : (
               <button
-                onClick={() => handleNormalize()}
+                onClick={() => { handleNormalize(); }}
                 className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
               >
                 Normalize / Convert
@@ -287,7 +280,7 @@ export function App() {
         )}
 
         {/* Soundboard — appears after first normalize, stays visible; dimmed during mixing */}
-        {showSoundboard && (
+        {config && ['normalized', 'mixing', 'complete'].includes(phase) && (
           <div className={`space-y-2 transition-opacity ${soundboardDimmed ? 'opacity-40 pointer-events-none' : ''}`}>
             <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">Mix Presets</h2>
             <Soundboard config={config} />

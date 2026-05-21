@@ -40,7 +40,7 @@ async function pcoGet<T>(endpoint: string, creds: PcoCredentials): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-type PcoListResponse<TAttr> = { data: Array<{ id: string; attributes: TAttr }> };
+interface PcoListResponse<TAttr> { data: { id: string; attributes: TAttr }[] }
 
 export async function validateCredentials(creds: PcoCredentials): Promise<boolean> {
   try {
@@ -109,25 +109,25 @@ export function savePcoLink(songDir: string, link: PcoSongLink): void {
 // Reference: https://developer.planning.center/docs/#/apps/services
 // Issue a GET to the attachments endpoint first to check for existing files
 // before uploading (to implement the skip logic).
-export async function uploadMixFile(
+export function uploadMixFile(
   _link: PcoSongLink,
   _keySignature: string,
   _filePath: string,
   _creds: PcoCredentials
 ): Promise<void> {
-  throw new Error(
+  return Promise.reject(new Error(
     'PCO upload not yet implemented — PAT required.\n' +
       'See MAINTAINER.md § "PCO Upload Implementation" for the plan.'
-  );
+  ));
 }
 
 // Returns false until the upload is implemented.
 // TODO: Replace with GET /attachments filtered by filename once PAT is available.
-export async function attachmentExists(
+export function attachmentExists(
   _link: PcoSongLink,
   _keySignature: string,
   _fileName: string,
   _creds: PcoCredentials
 ): Promise<boolean> {
-  return false;
+  return Promise.resolve(false);
 }

@@ -18,10 +18,12 @@ export function buildMixInputs(
 
 function filterStems(stems: ClassifiedStem[], mixDef: MixDefinition): ClassifiedStem[] {
   if (mixDef.include_only) {
-    return stems.filter((s) => mixDef.include_only!.includes(s.category));
+    const includeOnly = mixDef.include_only;
+    return stems.filter((s) => includeOnly.includes(s.category));
   }
   if (mixDef.exclude) {
-    return stems.filter((s) => !mixDef.exclude!.includes(s.category));
+    const exclude = mixDef.exclude;
+    return stems.filter((s) => !exclude.includes(s.category));
   }
   return stems;
 }
