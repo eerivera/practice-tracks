@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import yaml from 'js-yaml';
 import { createApi } from './api/factory.js';
 import { DropZone } from './components/DropZone.js';
 import { ProgressFeed } from './components/ProgressFeed.js';
@@ -21,6 +22,7 @@ type Phase =
 
 export function App() {
   const [config, setConfig] = useState<Config | null>(null);
+  const [configDirty, setConfigDirty] = useState(false);
   const [pastOutputs, setPastOutputs] = useState<SongOutputs[]>([]);
   const [phase, setPhase] = useState<Phase>('idle');
   const [events, setEvents] = useState<ProgressEvent[]>([]);
@@ -30,8 +32,7 @@ export function App() {
   const [fileCount, setFileCount] = useState(0);
   const [showForceModal, setShowForceModal] = useState(false);
   const filesRef = useRef<File[] | null>(null);
-  // One sessionId per batch — shared across all three steps so the server can
-  // match normalize results to the subsequent mix request.
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const esRef = useRef<EventSource | null>(null);
 
@@ -39,6 +40,54 @@ export function App() {
     api.getConfig().then(setConfig).catch(console.error);
     api.getOutputs().then(setPastOutputs).catch(console.error);
   }, []);
+
+  // ── Config editing ────────────────────────────────────────────────────────────
+
+  function handleConfigChange(newConfig: Config) {
+    setConfig(newConfig);
+    setConfigDirty(true);
+  }
+
+  async function handleSaveConfig() {
+    if (!config) return;
+    await api.saveConfig(config);
+    setConfigDirty(false);
+  }
+
+  async function handleResetConfig() {
+    const defaultConfig = await api.resetConfig();
+    setConfig(defaultConfig);
+    setConfigDirty(false);
+  }
+
+  function handleDownloadConfig() {
+    if (!config) return;
+    const text = yaml.dump(config, { lineWidth: 120 });
+    const blob = new Blob([text], { type: 'text/yaml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'practice-tracks-config.yaml';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handleUploadConfig(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = yaml.load(ev.target?.result as string) as Config;
+        setConfig(parsed);
+        setConfigDirty(true);
+      } catch {
+        alert('Could not parse config file. Make sure it is a valid YAML config.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
 
   // ── SSE helpers ─────────────────────────────────────────────────────────────
 
@@ -67,14 +116,17 @@ export function App() {
     setPhase('files_selected');
   }
 
-  function handleExtract() {
+  async function handleExtract() {
     if (!filesRef.current) return;
+    // Persist any unsaved config changes before the pipeline starts so they
+    // take effect in this session (server reads from disk; browser reads localStorage).
+    if (config) await api.saveConfig(config).catch(console.error);
+    setConfigDirty(false);
     setEvents([]);
     setSongDirs([]);
     setExistingOutputCount(0);
     setSkippedCount(0);
     setShowForceModal(false);
-    // Generate one sessionId for this entire batch; normalize and mix reuse it.
     sessionIdRef.current = crypto.randomUUID();
     setPhase('extracting');
 
@@ -84,7 +136,6 @@ export function App() {
       () => {
         setSongDirs(extracted);
         setPhase('extracted');
-        // Check for existing output now that we have song titles/keys/BPMs.
         if (extracted.length > 0) {
           api.checkOutputs(extracted)
             .then((results) => { setExistingOutputCount(results.filter((r) => r.hasOutput).length); })
@@ -101,7 +152,6 @@ export function App() {
     if (!songDirs.length) return;
     setSkippedCount(0);
     setShowForceModal(false);
-    // Reuse the sessionId from extract — server looks up normalize results by it.
     setPhase('normalizing');
 
     let skips = 0;
@@ -115,9 +165,7 @@ export function App() {
   }
 
   function handleMix() {
-    // Reuse the sessionId from normalize — server retrieves held stems by it.
     setPhase('mixing');
-
     openSse(
       () => { /* events already appended */ },
       () => {
@@ -190,10 +238,8 @@ export function App() {
           <p className="text-slate-400 text-sm mt-1">Drop your Multitracks zips to generate rehearsal mixes</p>
         </header>
 
-        {/* Drop zone — idle only */}
         {phase === 'idle' && <DropZone onFiles={handleFilesDropped} />}
 
-        {/* Files selected — waiting for Extract */}
         {phase === 'files_selected' && (
           <div className="space-y-3">
             <p className="text-slate-400 text-sm">
@@ -201,7 +247,7 @@ export function App() {
             </p>
             <div className="flex gap-3">
               <button
-                onClick={handleExtract}
+                onClick={() => { void handleExtract(); }}
                 className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
               >
                 Extract Stems
@@ -216,10 +262,8 @@ export function App() {
           </div>
         )}
 
-        {/* Progress log */}
         {showLog && <ProgressFeed events={events} />}
 
-        {/* Extracted — waiting for Normalize */}
         {phase === 'extracted' && (
           <div className="space-y-3">
             <div className="flex items-start gap-2 px-3 py-2.5 bg-slate-800 rounded-lg text-sm text-slate-400">
@@ -259,7 +303,6 @@ export function App() {
           </div>
         )}
 
-        {/* Normalized — waiting for Mix (or force modal is showing) */}
         {phase === 'normalized' && !showForceModal && (
           <button
             onClick={handleMix}
@@ -269,7 +312,6 @@ export function App() {
           </button>
         )}
 
-        {/* Complete */}
         {phase === 'complete' && (
           <button
             onClick={handleReset}
@@ -279,15 +321,59 @@ export function App() {
           </button>
         )}
 
-        {/* Soundboard — appears after first normalize, stays visible; dimmed during mixing */}
-        {config && ['normalized', 'mixing', 'complete'].includes(phase) && (
-          <div className={`space-y-2 transition-opacity ${soundboardDimmed ? 'opacity-40 pointer-events-none' : ''}`}>
-            <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">Mix Presets</h2>
-            <Soundboard config={config} />
+        {/* Mix presets — always visible once config is loaded; dimmed while mixing */}
+        {config && (
+          <div className={`space-y-3 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">
+                Mix Presets
+                {configDirty && <span className="ml-2 text-amber-400 normal-case font-normal">● unsaved</span>}
+              </h2>
+              <div className="flex gap-2">
+                {/* Hidden file input for upload */}
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept=".yaml,.yml"
+                  className="hidden"
+                  onChange={handleUploadConfig}
+                />
+                <button
+                  onClick={() => { uploadInputRef.current?.click(); }}
+                  className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                  title="Upload a saved config file"
+                >
+                  Upload
+                </button>
+                <button
+                  onClick={handleDownloadConfig}
+                  className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                  title="Download current config as YAML"
+                >
+                  Download
+                </button>
+                <button
+                  onClick={() => { void handleResetConfig(); }}
+                  className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                  title="Restore factory defaults"
+                >
+                  Restore defaults
+                </button>
+                <button
+                  onClick={() => { void handleSaveConfig(); }}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
+                  disabled={!configDirty}
+                  title="Save as new default (persists across sessions)"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+            <Soundboard config={config} onChange={handleConfigChange} />
           </div>
         )}
 
-        {/* Past mixes — always visible; links dimmed while a step is running */}
+        {/* Past mixes — always visible; links dimmed while processing */}
         <div className={`transition-opacity ${isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
           <PastMixes
             outputs={pastOutputs}
