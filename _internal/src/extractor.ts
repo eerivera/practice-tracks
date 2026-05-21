@@ -2,6 +2,7 @@ import AdmZip from 'adm-zip';
 import { writeFileSync } from 'fs';
 import fs from 'fs';
 import path from 'path';
+import { consoleEmitter, type Emitter } from './events.js';
 
 export interface SongMetadata {
   key?: string;
@@ -33,7 +34,11 @@ export function formatOutputSubdir(meta: SongMetadata): string | null {
 
 // Extracts a Multitracks.com zip into songs/<song-name>/stems/.
 // Uses adm-zip (pure JS) so it works on macOS, Windows, and Linux without system tools.
-export function extractMultitrackZip(zipPath: string, songsDir: string): ExtractResult {
+export function extractMultitrackZip(
+  zipPath: string,
+  songsDir: string,
+  emit: Emitter = consoleEmitter
+): ExtractResult {
   const zip = new AdmZip(zipPath);
   const entries = zip.getEntries();
 
@@ -56,18 +61,17 @@ export function extractMultitrackZip(zipPath: string, songsDir: string): Extract
   const stemsDir = path.join(songDir, 'stems');
   fs.mkdirSync(stemsDir, { recursive: true });
 
-  console.log(`Extracting ${stemEntries.length} stems...`);
+  emit({ type: 'extract_start', total: stemEntries.length });
   const extractStart = Date.now();
-  for (const entry of stemEntries) {
+
+  for (let i = 0; i < stemEntries.length; i++) {
+    const entry = stemEntries[i];
     const t = Date.now();
-    process.stdout.write(`  ${entry.name}...`);
     writeFileSync(path.join(stemsDir, entry.name), entry.getData());
-    const ms = Date.now() - t;
-    process.stdout.write(` done (${(ms / 1000).toFixed(1)}s)\n`);
+    emit({ type: 'stem_extracted', name: entry.name, index: i + 1, total: stemEntries.length, timeMs: Date.now() - t });
   }
-  const totalMs = Date.now() - extractStart;
-  const totalSec = (totalMs / 1000).toFixed(1);
-  console.log(`Extraction complete (${totalSec}s total)`);
+
+  emit({ type: 'extract_complete', total: stemEntries.length, elapsedMs: Date.now() - extractStart });
 
   // Copy album art if present
   const albumEntry = entries.find(
