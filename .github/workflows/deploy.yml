@@ -3,6 +3,12 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    paths:
+      - '_internal/web/**'
+      - '_internal/common/**'
+      - 'config/default_mix.yaml'
+      - 'package*.json'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
