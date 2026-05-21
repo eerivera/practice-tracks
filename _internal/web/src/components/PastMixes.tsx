@@ -23,12 +23,12 @@ export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl }: Props) 
             <h3 className="font-medium text-white">{songDisplayName(song.songDir)}</h3>
             {song.variants.map((variant) => (
               <div key={variant.keyBpm}>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-baseline justify-between mb-2">
                   <p className="text-xs text-slate-500">{variant.keyBpm}</p>
                   <a
                     href={getVariantZipUrl(`songs/${song.songDir}/output/${variant.keyBpm}`)}
                     download
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded-md text-xs text-slate-300 hover:text-white transition-colors group"
+                    className="flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-700 hover:bg-slate-600 rounded-md text-xs text-slate-300 hover:text-white transition-colors group"
                   >
                     <span className="text-indigo-400 group-hover:text-indigo-300 leading-none">↓</span>
                     Download all
