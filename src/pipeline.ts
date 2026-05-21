@@ -136,21 +136,41 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-'));
 
   try {
-    console.log(`Normalizing to ${config.target_lufs} LUFS...`);
+    const configured = config.normalization_concurrency ?? 0;
+    const concurrency = Math.min(
+      configured > 0 ? configured : backend.maxConcurrency,
+      backend.maxConcurrency, // WASM always caps at 1 regardless of config
+      stems.length
+    );
+    const concurrencyNote = concurrency > 1 ? ` (${concurrency} at a time)` : '';
+    console.log(`Normalizing ${stems.length} stems to ${config.target_lufs} LUFS${concurrencyNote}...`);
     const normalizeStart = Date.now();
-    const normalizedStems: ClassifiedStem[] = [];
 
-    for (const stem of stems) {
-      const tmpPath = path.join(tmpDir, `${stem.filename}.wav`);
-      const t = Date.now();
-      process.stdout.write(`  ${stem.filename}...`);
-      await backend.normalize(stem.path, tmpPath, {
-        targetLufs: config.target_lufs,
-        truePeak: -1,
-      });
-      normalizedStems.push({ ...stem, path: tmpPath });
-      process.stdout.write(` done (${elapsed(t)})\n`);
+    const normalizedStems: ClassifiedStem[] = new Array(stems.length);
+    let completed = 0;
+
+    // Worker queue: each worker grabs the next unstarted stem until the queue
+    // is empty. Node.js's single-threaded event loop makes queue.shift() safe
+    // here — only one worker can execute between awaits at any given time.
+    const queue = stems.map((stem, i) => ({ stem, i }));
+    async function normalizeWorker(): Promise<void> {
+      let next = queue.shift();
+      while (next !== undefined) {
+        const { stem, i } = next;
+        const tmpPath = path.join(tmpDir, `${stem.filename}.wav`);
+        const t = Date.now();
+        await backend.normalize(stem.path, tmpPath, {
+          targetLufs: config.target_lufs,
+          truePeak: -1,
+        });
+        normalizedStems[i] = { ...stem, path: tmpPath };
+        completed++;
+        console.log(`  [${completed}/${stems.length}] ${stem.filename} (${elapsed(t)})`);
+        next = queue.shift();
+      }
     }
+
+    await Promise.all(Array.from({ length: concurrency }, normalizeWorker));
     console.log(`Normalization complete (${elapsed(normalizeStart)} total)\n`);
 
     console.log('Generating mixes...');

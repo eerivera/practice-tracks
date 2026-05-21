@@ -11,6 +11,8 @@
   },
   "scripts": {
     "mix": "tsx src/cli.ts",
+    "clean": "tsx src/cli.ts clean",
+    "clean:full": "tsx src/cli.ts clean --full",
     "type-check": "tsc --noEmit",
     "lint": "eslint src tests",
     "test": "vitest run",
