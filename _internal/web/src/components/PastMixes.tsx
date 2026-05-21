@@ -27,7 +27,7 @@ export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl }: Props) 
                   <p className="text-xs text-slate-500">{variant.keyBpm}</p>
                   <a
                     href={getVariantZipUrl(`songs/${song.songDir}/output/${variant.keyBpm}`)}
-                    download
+                    download={`${songDisplayName(song.songDir)} - ${variant.keyBpm}.zip`}
                     className="flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-700 hover:bg-slate-600 rounded-md text-xs text-slate-300 hover:text-white transition-colors group"
                   >
                     <span className="text-indigo-400 group-hover:text-indigo-300 leading-none">↓</span>
@@ -39,7 +39,7 @@ export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl }: Props) 
                     <a
                       key={file.path}
                       href={getDownloadUrl(file.path)}
-                      download
+                      download={file.name}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm text-slate-300 hover:text-white transition-colors group"
                     >
                       <span className="text-indigo-400 group-hover:text-indigo-300 text-base leading-none">↓</span>
