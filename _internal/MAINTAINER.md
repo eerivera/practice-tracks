@@ -199,9 +199,61 @@ To add a new stem type: update `StemCategory` in `types.ts`, add pattern to `STE
 
 ---
 
-## Browser Frontend (future)
+## Web Interface (Local Server Mode)
 
-When building the web app, PCO features should only appear if the user has configured PCO credentials. The mechanism:
+### Running
+
+```bash
+npm run web          # build frontend, then start server (production-like)
+npm run web:dev      # concurrent dev server (Vite HMR) + Express server with tsx watch
+```
+
+Both open at `http://localhost:3000`. `web:dev` uses Vite's dev server on port 5173 and proxies `/api/*` to Express.
+
+### Architecture
+
+```
+_internal/
+  src/server.ts          Express server (SSE streaming, upload, download, config endpoints)
+  web/
+    src/
+      types.ts           Mirror of server-side ProgressEvent + AppConfig, QueueStatus, MixOutput
+      api/
+        interface.ts     ProcessingApi interface
+        server.ts        ServerApi — fetch + EventSource (default)
+        browser.ts       BrowserApi stub (future WASM path)
+        factory.ts       Selects impl via VITE_BACKEND build flag
+      components/
+        DropZone.tsx      Drag-and-drop + click-to-browse .zip picker
+        ProgressFeed.tsx  SSE log + normalize progress bar
+        Soundboard.tsx    Read-only per-mix faders showing config gains
+        OutputPanel.tsx   Download buttons for generated mix files
+      App.tsx             State machine: idle → processing → complete
+    vite.config.ts
+    tailwind.config.js
+    postcss.config.js     Must specify explicit tailwindcss config path (PostCSS resolves from CWD, not Vite root)
+```
+
+### Key design decisions
+
+- **`VITE_BACKEND` build flag** — defaults to `'server'` (ServerApi). Set `VITE_BACKEND=browser` to build a static site using the future WASM path. The server build needs the Express backend; the browser build runs entirely in-browser with no server.
+- **SSE + upload sequencing** — client opens `EventSource` before POSTing files (both share the same `sessionId`). Server responds immediately to POST with 200 and runs the pipeline async, streaming events to the open SSE connection.
+- **Download security** — download paths are base64url-encoded. Server validates that the decoded path stays within `songs/` before serving. No traversal possible.
+- **WEB_DIST path** — `server.ts` exits with a helpful message if `_internal/web/dist/` doesn't exist yet (i.e., `npm run web:build` hasn't been run). `npm run web` always builds first.
+
+### Tailwind + PostCSS config note
+
+PostCSS resolves `tailwind.config.js` from `process.cwd()` (the project root), not the Vite root passed on the CLI. `postcss.config.js` must therefore specify the config path explicitly:
+
+```js
+tailwindcss: { config: './_internal/web/tailwind.config.js' }
+```
+
+This is a known Vite quirk when building a subdirectory with a non-root PostCSS config.
+
+### Browser Frontend (future WASM path)
+
+When building the static/browser build, PCO features should only appear if the user has configured PCO credentials. The mechanism:
 - In the Node CLI: presence of `PCO_APP_ID`/`PCO_SECRET` env vars
 - In the browser: a "Settings" section where the user pastes their PAT and it is validated before the PCO upload UI is shown. Do not include PCO-related UI in the initial render — reveal it only after successful credential validation.
 
