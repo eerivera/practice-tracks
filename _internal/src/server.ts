@@ -73,8 +73,9 @@ app.post(
   '/api/process',
   upload.array('zips'),
   async (req: Request, res: Response) => {
-    const { sessionId } = req.body as { sessionId: string };
+    const { sessionId, force: forceRaw } = req.body as { sessionId: string; force?: string };
     const files = req.files as Express.Multer.File[];
+    const force = forceRaw === 'true';
 
     if (!sessionId || !files?.length) {
       res.status(400).json({ error: 'sessionId and at least one zip file are required' });
@@ -94,7 +95,7 @@ app.post(
 
       try {
         const extracted = extractMultitrackZip(originalPath, SONGS_DIR, emit);
-        const result = await runPipeline({ songDir: extracted.songDir }, emit);
+        const result = await runPipeline({ songDir: extracted.songDir, force }, emit);
 
         if (!result.skipped) {
           emit({
@@ -115,6 +116,45 @@ app.post(
     emit({ type: 'session_complete' });
   }
 );
+
+// List all existing mix files, organised by song → key/BPM variant → mix name.
+app.get('/api/outputs', (_req: Request, res: Response) => {
+  if (!fs.existsSync(SONGS_DIR)) {
+    res.json([]);
+    return;
+  }
+
+  const AUDIO_RE = /\.(m4a|mp3|wav|aiff?)$/i;
+  const result: Array<{
+    songDir: string;
+    variants: Array<{ keyBpm: string; files: Array<{ name: string; path: string }> }>;
+  }> = [];
+
+  for (const songName of fs.readdirSync(SONGS_DIR)) {
+    const outputDir = path.join(SONGS_DIR, songName, 'output');
+    if (!fs.existsSync(outputDir) || !fs.statSync(outputDir).isDirectory()) continue;
+
+    const variants: Array<{ keyBpm: string; files: Array<{ name: string; path: string }> }> = [];
+
+    for (const variantName of fs.readdirSync(outputDir)) {
+      const variantDir = path.join(outputDir, variantName);
+      if (!fs.statSync(variantDir).isDirectory()) continue;
+
+      const files = fs.readdirSync(variantDir)
+        .filter((f) => AUDIO_RE.test(f))
+        .map((f) => ({
+          name: path.basename(f, path.extname(f)),
+          path: path.join(SONGS_DIR, songName, 'output', variantName, f),
+        }));
+
+      if (files.length > 0) variants.push({ keyBpm: variantName, files });
+    }
+
+    if (variants.length > 0) result.push({ songDir: songName, variants });
+  }
+
+  res.json(result);
+});
 
 // Serve a generated mix file for download.
 // The path is passed as a base64url-encoded string to keep URLs simple and

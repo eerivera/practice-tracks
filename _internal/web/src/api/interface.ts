@@ -1,8 +1,8 @@
-import type { AppConfig, QueueStatus } from '../types.js';
+import type { AppConfig, QueueStatus, SongOutputs } from '../types.js';
 
 export interface ProcessingApi {
-  /** Upload zip files and begin processing. Returns a session ID. */
-  processZips(files: File[], sessionId: string): Promise<void>;
+  /** Upload zip files and begin processing. */
+  processZips(files: File[], sessionId: string, force?: boolean): Promise<void>;
 
   /** Open an SSE stream for the given session. */
   getEventStream(sessionId: string): EventSource;
@@ -12,6 +12,9 @@ export interface ProcessingApi {
 
   /** Return the current queue state. */
   getStatus(): Promise<QueueStatus>;
+
+  /** List all existing mix files on disk, organised by song → variant. */
+  getOutputs(): Promise<SongOutputs[]>;
 
   /** Return a URL that triggers download of a generated mix file. */
   getDownloadUrl(filePath: string): string;

@@ -50,3 +50,18 @@ export interface MixOutput {
   name: string;
   downloadUrl: string;
 }
+
+export interface SongOutputFile {
+  name: string;
+  path: string;
+}
+
+export interface SongOutputVariant {
+  keyBpm: string;
+  files: SongOutputFile[];
+}
+
+export interface SongOutputs {
+  songDir: string;
+  variants: SongOutputVariant[];
+}
