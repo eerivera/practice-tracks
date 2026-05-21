@@ -157,10 +157,10 @@ app.get('/api/outputs', (_req: Request, res: Response) => {
   res.json(result);
 });
 
-// Zip all output files for a song and serve as a single download.
-// Encoded path is songs/<songDir> — same base64url scheme as /api/download.
-app.get('/api/download-zip/:encodedSongDir', (req: Request, res: Response) => {
-  const decoded = Buffer.from(req.params['encodedSongDir'] as string, 'base64url').toString('utf8');
+// Zip all mix files in a single key/BPM variant directory.
+// Encoded path is songs/<songDir>/output/<keyBpm> — same base64url scheme as /api/download.
+app.get('/api/download-zip/:encodedVariantDir', (req: Request, res: Response) => {
+  const decoded = Buffer.from(req.params['encodedVariantDir'] as string, 'base64url').toString('utf8');
   const resolved = path.resolve(decoded);
   const songsRoot = path.resolve(SONGS_DIR);
 
@@ -168,25 +168,23 @@ app.get('/api/download-zip/:encodedSongDir', (req: Request, res: Response) => {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
-
-  const outputDir = path.join(resolved, 'output');
-  if (!fs.existsSync(outputDir)) {
-    res.status(404).json({ error: 'No output found for this song' });
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+    res.status(404).json({ error: 'Not found' });
     return;
   }
 
   const AUDIO_RE = /\.(m4a|mp3|wav|aiff?)$/i;
   const zip = new AdmZip();
-
-  for (const variant of fs.readdirSync(outputDir)) {
-    const variantDir = path.join(outputDir, variant);
-    if (!fs.statSync(variantDir).isDirectory()) continue;
-    for (const file of fs.readdirSync(variantDir)) {
-      if (AUDIO_RE.test(file)) zip.addLocalFile(path.join(variantDir, file), variant);
-    }
+  for (const file of fs.readdirSync(resolved)) {
+    if (AUDIO_RE.test(file)) zip.addLocalFile(path.join(resolved, file));
   }
 
-  const displayName = path.basename(decoded).replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
+  // "songs/Who Else-Ab-68.00bpm/output/Ab-68bpm" → "Who Else - Ab-68bpm.zip"
+  const parts = decoded.split('/');
+  const songPart = (parts[1] ?? '').replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
+  const variantPart = parts[3] ?? '';
+  const displayName = variantPart ? `${songPart} - ${variantPart}` : songPart;
+
   res.setHeader('Content-Disposition', `attachment; filename="${displayName}.zip"`);
   res.setHeader('Content-Type', 'application/zip');
   res.send(zip.toBuffer());

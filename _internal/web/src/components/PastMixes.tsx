@@ -3,7 +3,7 @@ import type { SongOutputs } from '../types.js';
 interface Props {
   outputs: SongOutputs[];
   getDownloadUrl: (path: string) => string;
-  getSongZipUrl: (songDir: string) => string;
+  getVariantZipUrl: (variantPath: string) => string;
 }
 
 function songDisplayName(songDir: string): string {
@@ -11,7 +11,7 @@ function songDisplayName(songDir: string): string {
   return songDir.replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
 }
 
-export function PastMixes({ outputs, getDownloadUrl, getSongZipUrl }: Props) {
+export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl }: Props) {
   if (outputs.length === 0) return null;
 
   return (
@@ -19,21 +19,21 @@ export function PastMixes({ outputs, getDownloadUrl, getSongZipUrl }: Props) {
       <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">Past Mixes</h2>
       <div className="space-y-3">
         {outputs.map((song) => (
-          <div key={song.songDir} className="bg-slate-800 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between gap-4">
-              <h3 className="font-medium text-white">{songDisplayName(song.songDir)}</h3>
-              <a
-                href={getSongZipUrl(song.songDir)}
-                download
-                className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm text-slate-300 hover:text-white transition-colors group"
-              >
-                <span className="text-indigo-400 group-hover:text-indigo-300 leading-none">↓</span>
-                Download all
-              </a>
-            </div>
+          <div key={song.songDir} className="bg-slate-800 rounded-xl p-4 space-y-4">
+            <h3 className="font-medium text-white">{songDisplayName(song.songDir)}</h3>
             {song.variants.map((variant) => (
               <div key={variant.keyBpm}>
-                <p className="text-xs text-slate-500 mb-2">{variant.keyBpm}</p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-slate-500">{variant.keyBpm}</p>
+                  <a
+                    href={getVariantZipUrl(`songs/${song.songDir}/output/${variant.keyBpm}`)}
+                    download
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded-md text-xs text-slate-300 hover:text-white transition-colors group"
+                  >
+                    <span className="text-indigo-400 group-hover:text-indigo-300 leading-none">↓</span>
+                    Download all
+                  </a>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {variant.files.map((file) => (
                     <a

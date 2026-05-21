@@ -160,7 +160,7 @@ export function App() {
           <PastMixes
             outputs={pastOutputs}
             getDownloadUrl={(p) => api.getDownloadUrl(p)}
-            getSongZipUrl={(d) => api.getSongZipUrl(d)}
+            getVariantZipUrl={(p) => api.getVariantZipUrl(p)}
           />
         )}
 

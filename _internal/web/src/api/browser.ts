@@ -24,7 +24,7 @@ export class BrowserApi implements ProcessingApi {
     return Promise.reject(new Error('Browser API not yet implemented'));
   }
 
-  getSongZipUrl(_songDir: string): string {
+  getVariantZipUrl(_variantPath: string): string {
     throw new Error('Browser API not yet implemented');
   }
 
