@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import open from 'open';
 import AdmZip from 'adm-zip';
-import { runPipeline } from './pipeline.js';
+import { runNormalize, runMix, type NormalizeResult } from './pipeline.js';
 import { extractMultitrackZip } from './extractor.js';
 import { loadConfig } from './config/loader.js';
 import { getMixQueue, getUploadQueue } from './queue.js';
@@ -17,6 +17,7 @@ loadEnv();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 const WEB_DIST = path.resolve('_internal/web/dist');
 const SONGS_DIR = 'songs';
+const SONGS_ROOT = path.resolve(SONGS_DIR);
 
 // ─── SSE session registry ─────────────────────────────────────────────────────
 
@@ -24,12 +25,22 @@ const sessions = new Map<string, Response>();
 
 function sseEmitter(sessionId: string): Emitter {
   return (event: ProgressEvent) => {
-    consoleEmitter(event); // always mirror to terminal
+    consoleEmitter(event);
     const res = sessions.get(sessionId);
-    if (res) {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
-    }
+    if (res) res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
+}
+
+// ─── Normalize result registry ────────────────────────────────────────────────
+// Holds in-memory normalization output between the /api/normalize and /api/mix
+// requests for a given session. Cleaned up in /api/mix (success or error).
+
+const normalizedResults = new Map<string, NormalizeResult[]>();
+
+function cleanupNormalized(sessionId: string): void {
+  const results = normalizedResults.get(sessionId) ?? [];
+  for (const r of results) fs.rmSync(r.tmpDir, { recursive: true, force: true });
+  normalizedResults.delete(sessionId);
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -52,12 +63,10 @@ app.get('/api/status', (_req: Request, res: Response) => {
 });
 
 app.get('/api/config', (_req: Request, res: Response) => {
-  // Load the default project config (no per-song overrides)
-  const config = loadConfig('.');
-  res.json(config);
+  res.json(loadConfig('.'));
 });
 
-// SSE stream — client opens this before uploading to receive progress events
+// SSE stream — client opens this before each step to receive progress events
 app.get('/api/events/:sessionId', (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -69,44 +78,31 @@ app.get('/api/events/:sessionId', (req: Request, res: Response) => {
   req.on('close', () => sessions.delete(sessionId));
 });
 
-// Upload one or more zips — process sequentially, stream progress via SSE
+// Step 1: extract zips → stems on disk
+// Emits extract events then a songs_ready event with the resulting songDirs.
 app.post(
-  '/api/process',
+  '/api/extract',
   upload.array('zips'),
   async (req: Request, res: Response) => {
-    const { sessionId, force: forceRaw } = req.body as { sessionId: string; force?: string };
+    const { sessionId } = req.body as { sessionId: string };
     const files = req.files as Express.Multer.File[];
-    const force = forceRaw === 'true';
 
     if (!sessionId || !files?.length) {
       res.status(400).json({ error: 'sessionId and at least one zip file are required' });
       return;
     }
 
-    // Respond immediately so the client knows processing has started
-    res.json({ status: 'processing', count: files.length });
+    res.json({ status: 'extracting', count: files.length });
 
     const emit = sseEmitter(sessionId);
+    const songDirs: string[] = [];
 
     for (const file of files) {
-      // Multer stores files with a random name; restore the original so
-      // extractMultitrackZip can derive the song name from it.
       const originalPath = path.join(os.tmpdir(), file.originalname);
       fs.renameSync(file.path, originalPath);
-
       try {
         const extracted = extractMultitrackZip(originalPath, SONGS_DIR, emit);
-        const result = await runPipeline({ songDir: extracted.songDir, force }, emit);
-
-        if (!result.skipped) {
-          emit({
-            type: 'pipeline_complete',
-            outputDir: result.outputDir,
-            elapsedMs: 0,
-            skipped: false,
-            mixFiles: result.mixFiles,
-          });
-        }
+        songDirs.push(extracted.songDir);
       } catch (err) {
         emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
       } finally {
@@ -114,9 +110,90 @@ app.post(
       }
     }
 
+    emit({ type: 'songs_ready', songDirs });
     emit({ type: 'session_complete' });
   }
 );
+
+// Step 2: normalize stems for a set of song directories.
+// Holds results in memory keyed by sessionId for the subsequent mix step.
+// If called again with the same sessionId (e.g. force reprocess), existing
+// tmpDirs are cleaned up first.
+app.post('/api/normalize', async (req: Request, res: Response) => {
+  const { sessionId, songDirs, force: forceRaw } = req.body as {
+    sessionId: string;
+    songDirs: string[];
+    force?: boolean;
+  };
+  const force = forceRaw === true;
+
+  if (!sessionId || !Array.isArray(songDirs) || songDirs.length === 0) {
+    res.status(400).json({ error: 'sessionId and songDirs are required' });
+    return;
+  }
+
+  // Validate all paths stay within songs/
+  for (const songDir of songDirs) {
+    if (!path.resolve(songDir).startsWith(SONGS_ROOT)) {
+      res.status(403).json({ error: 'Invalid song directory' });
+      return;
+    }
+  }
+
+  // Clean up any stale results from a previous normalize for this session
+  cleanupNormalized(sessionId);
+
+  res.json({ status: 'normalizing', count: songDirs.length });
+
+  const emit = sseEmitter(sessionId);
+  const results: NormalizeResult[] = [];
+
+  for (const songDir of songDirs) {
+    try {
+      const result = await runNormalize(songDir, force, emit);
+      if (result) results.push(result);
+    } catch (err) {
+      emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  normalizedResults.set(sessionId, results);
+  emit({ type: 'session_complete' });
+});
+
+// Step 3: mix from the normalised stems held by a previous /api/normalize call.
+// Cleans up tmpDirs on completion or error.
+app.post('/api/mix', async (req: Request, res: Response) => {
+  const { sessionId } = req.body as { sessionId: string };
+
+  if (!sessionId) {
+    res.status(400).json({ error: 'sessionId is required' });
+    return;
+  }
+
+  const results = normalizedResults.get(sessionId);
+  if (!results?.length) {
+    res.status(400).json({ error: 'No normalized stems found for this session. Run /api/normalize first.' });
+    return;
+  }
+
+  res.json({ status: 'mixing', count: results.length });
+
+  const emit = sseEmitter(sessionId);
+
+  try {
+    for (const result of results) {
+      try {
+        await runMix(result, emit);
+      } catch (err) {
+        emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  } finally {
+    cleanupNormalized(sessionId);
+    emit({ type: 'session_complete' });
+  }
+});
 
 // List all existing mix files, organised by song → key/BPM variant → mix name.
 app.get('/api/outputs', (_req: Request, res: Response) => {
@@ -136,7 +213,6 @@ app.get('/api/outputs', (_req: Request, res: Response) => {
     if (!fs.existsSync(outputDir) || !fs.statSync(outputDir).isDirectory()) continue;
 
     const variants: Array<{ keyBpm: string; files: Array<{ name: string; path: string }> }> = [];
-    // Strip key-bpm suffix to get the display title used as a filename prefix
     const songTitle = songName.replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
     const filePrefix = `${songTitle} - `;
 
@@ -164,13 +240,11 @@ app.get('/api/outputs', (_req: Request, res: Response) => {
 });
 
 // Zip all mix files in a single key/BPM variant directory.
-// Encoded path is songs/<songDir>/output/<keyBpm> — same base64url scheme as /api/download.
 app.get('/api/download-zip/:encodedVariantDir', (req: Request, res: Response) => {
   const decoded = Buffer.from(req.params['encodedVariantDir'] as string, 'base64url').toString('utf8');
   const resolved = path.resolve(decoded);
-  const songsRoot = path.resolve(SONGS_DIR);
 
-  if (!resolved.startsWith(songsRoot)) {
+  if (!resolved.startsWith(SONGS_ROOT)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -185,7 +259,6 @@ app.get('/api/download-zip/:encodedVariantDir', (req: Request, res: Response) =>
     if (AUDIO_RE.test(file)) zip.addLocalFile(path.join(resolved, file));
   }
 
-  // "songs/Who Else-Ab-68.00bpm/output/Ab-68bpm" → "Who Else - Ab-68bpm.zip"
   const parts = decoded.split('/');
   const songPart = (parts[1] ?? '').replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
   const variantPart = parts[3] ?? '';
@@ -197,14 +270,11 @@ app.get('/api/download-zip/:encodedVariantDir', (req: Request, res: Response) =>
 });
 
 // Serve a generated mix file for download.
-// The path is passed as a base64url-encoded string to keep URLs simple and
-// prevent path traversal — we validate it stays inside songs/ before serving.
 app.get('/api/download/:encodedPath', (req: Request, res: Response) => {
   const decoded = Buffer.from(req.params['encodedPath'] as string, 'base64url').toString('utf8');
   const resolved = path.resolve(decoded);
-  const songsRoot = path.resolve(SONGS_DIR);
 
-  if (!resolved.startsWith(songsRoot)) {
+  if (!resolved.startsWith(SONGS_ROOT)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -216,7 +286,7 @@ app.get('/api/download/:encodedPath', (req: Request, res: Response) => {
   res.download(resolved);
 });
 
-// SPA fallback — all non-API routes serve index.html
+// SPA fallback
 app.get('*', (_req: Request, res: Response) => {
   res.sendFile(path.join(WEB_DIST, 'index.html'));
 });

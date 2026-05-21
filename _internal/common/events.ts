@@ -23,7 +23,10 @@ export type ProgressEvent =
   | { type: 'mix_skipped'; name: string; reason: string }
   | { type: 'pipeline_complete'; outputDir: string; elapsedMs: number; skipped: boolean; mixFiles: string[] }
   | { type: 'error'; message: string }
-  | { type: 'session_complete' };
+  | { type: 'session_complete' }
+  // Fired after all zips in an extract step have been processed.
+  // Carries the server-side song directories for subsequent normalize/mix calls.
+  | { type: 'songs_ready'; songDirs: string[] };
 
 export type Emitter = (event: ProgressEvent) => void;
 
