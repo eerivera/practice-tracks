@@ -7,6 +7,32 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      Registers a service worker that injects Cross-Origin-Opener-Policy and
+      Cross-Origin-Embedder-Policy headers. Required for SharedArrayBuffer, which
+      @ffmpeg/ffmpeg needs internally. GitHub Pages can't set these headers natively;
+      the service worker is the standard workaround. The page reloads once on first
+      visit to activate the worker. Only active in the browser build (VITE_BACKEND=browser).
+      coi-serviceworker.js is vendored at _internal/web/public/ — check for updates
+      periodically at https://github.com/gzuidhof/coi-serviceworker/releases.
+    -->
+    <script>
+      if ("%VITE_BACKEND%" === "browser" && "serviceWorker" in navigator) {
+        navigator.serviceWorker
+          .register("%BASE_URL%coi-serviceworker.js", { scope: "%BASE_URL%" })
+          .then(function (reg) {
+            var worker = reg.installing || reg.waiting;
+            if (worker) {
+              worker.addEventListener("statechange", function (e) {
+                if (e.target.state === "activated" && !sessionStorage.getItem("coi-activated")) {
+                  sessionStorage.setItem("coi-activated", "1");
+                  window.location.reload();
+                }
+              });
+            }
+          });
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

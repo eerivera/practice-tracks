@@ -221,7 +221,10 @@ _internal/
       api/
         interface.ts     ProcessingApi interface
         server.ts        ServerApi — fetch + EventSource (default)
-        browser.ts       BrowserApi stub (future WASM path)
+        browser.ts       BrowserApi — full in-browser WASM pipeline (no server)
+        browser-backend.ts  BrowserWasmBackend — @ffmpeg/ffmpeg with Uint8Array I/O
+        embedded-config.ts  Default config bundled for browser build (mirrors default_mix.yaml)
+        fake-event-source.ts  Mock EventSource for browser-mode progress events
         factory.ts       Selects impl via VITE_BACKEND build flag
       components/
         DropZone.tsx      Drag-and-drop + click-to-browse .zip picker
@@ -236,10 +239,18 @@ _internal/
 
 ### Key design decisions
 
-- **`VITE_BACKEND` build flag** — defaults to `'server'` (ServerApi). Set `VITE_BACKEND=browser` to build a static site using the future WASM path. The server build needs the Express backend; the browser build runs entirely in-browser with no server.
-- **SSE + upload sequencing** — client opens `EventSource` before POSTing files (both share the same `sessionId`). Server responds immediately to POST with 200 and runs the pipeline async, streaming events to the open SSE connection.
-- **Download security** — download paths are base64url-encoded. Server validates that the decoded path stays within `songs/` before serving. No traversal possible.
+- **`VITE_BACKEND` build flag** — defaults to `'server'` (ServerApi). Set `VITE_BACKEND=browser` to build a static site that runs entirely in-browser via WASM. The `VITE_BASE` env var sets the Vite base URL (default `/`; use `/practice-tracks/` for GitHub Pages).
+- **SSE + upload sequencing** — client opens `EventSource` (or `FakeEventSource` in browser mode) before POSTing files (both share the same `sessionId`). Server responds immediately to POST with 200 and runs the pipeline async, streaming events to the open SSE connection.
+- **Download security** — download paths are base64url-encoded. Server validates that the decoded path stays within `songs/` before serving. No traversal possible. In browser mode, paths are Blob URLs managed by BrowserApi.
 - **WEB_DIST path** — `server.ts` exits with a helpful message if `_internal/web/dist/` doesn't exist yet (i.e., `npm run web:build` hasn't been run). `npm run web` always builds first.
+
+### GitHub Pages (browser build)
+
+The browser build is deployed automatically to GitHub Pages on every push to `main` via `.github/workflows/deploy.yml`. It runs `VITE_BACKEND=browser VITE_BASE=/practice-tracks/ npm run web:build`.
+
+**coi-serviceworker** — a service worker vendored at `_internal/web/public/coi-serviceworker.js` (v0.1.7, MIT). GitHub Pages cannot set `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` response headers, which are required for `SharedArrayBuffer` (used internally by @ffmpeg/ffmpeg). The service worker injects these headers on every response. The page reloads once on first visit to activate the worker. Check for updates at https://github.com/gzuidhof/coi-serviceworker/releases and replace the file if a meaningful update ships.
+
+**Future:** switching to Netlify or Cloudflare Pages would let us set these headers natively (via `_headers` file) and remove the service worker entirely.
 
 ### Tailwind + PostCSS config note
 
@@ -251,13 +262,11 @@ tailwindcss: { config: './_internal/web/tailwind.config.js' }
 
 This is a known Vite quirk when building a subdirectory with a non-root PostCSS config.
 
-### Browser Frontend (future WASM path)
+### Browser Frontend (WASM path)
 
-When building the static/browser build, PCO features should only appear if the user has configured PCO credentials. The mechanism:
-- In the Node CLI: presence of `PCO_APP_ID`/`PCO_SECRET` env vars
-- In the browser: a "Settings" section where the user pastes their PAT and it is validated before the PCO upload UI is shown. Do not include PCO-related UI in the initial render — reveal it only after successful credential validation.
+The browser build (`VITE_BACKEND=browser`) runs the full pipeline in-browser. No server required. PCO upload is not available in browser mode (server-side only).
 
-The WASM backend needs browser I/O adaptation before the web app ships: replace `writeFileSync`/`readFileSync` with File API input and Blob download output. See `TODO` comment in `src/backend/wasm.ts`.
+When PCO browser support is added, credentials should be gated behind a Settings panel — do not show PCO UI on initial load. See CLAUDE.md for details.
 
 ---
 
