@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { runPipeline } from './pipeline.js';
 import { extractMultitrackZip, parseSongMetadata, formatOutputSubdir } from './extractor.js';
+import { consoleEmitter } from './events.js';
 import { classifyStems } from './stems/classifier.js';
 import {
   getMixQueue,
@@ -62,7 +63,7 @@ async function mixOne(
 ): Promise<'mixed' | 'skipped' | 'failed'> {
   const force = globalForce || entryForce;
   try {
-    const result = await runPipeline({ songDir, force, archive });
+    const result = await runPipeline({ songDir, force, archive }, consoleEmitter);
     if (result.skipped) return 'skipped';
 
     upsertUploadQueue({ songDir, outputDir: result.outputDir });
@@ -151,7 +152,7 @@ program
         continue;
       }
       try {
-        const result = extractMultitrackZip(zipPath, songsDir);
+        const result = extractMultitrackZip(zipPath, songsDir, consoleEmitter);
         upsertMixQueue({ songDir: result.songDir, zipPath: path.resolve(zipPath) });
         console.log(`\nQueued for mixing: ${result.songDir}\n`);
       } catch (err) {
@@ -288,7 +289,7 @@ program
           for (const file of toExtract) {
             const zipPath = path.join(QUEUE_ZIPS_DIR, file);
             try {
-              const result = extractMultitrackZip(zipPath, songsDir);
+              const result = extractMultitrackZip(zipPath, songsDir, consoleEmitter);
               upsertMixQueue({ songDir: result.songDir, zipPath: path.resolve(zipPath) });
               console.log(`Queued: ${result.songDir}\n`);
             } catch (err) {
@@ -494,7 +495,7 @@ program
       const songsDir = resolvedPath(options.songsDir);
 
       try {
-        const result = extractMultitrackZip(resolved, songsDir);
+        const result = extractMultitrackZip(resolved, songsDir, consoleEmitter);
         console.log(`\nExtracted to: ${result.songDir}\n`);
         await mixOne(result.songDir, resolved, false, options.force ?? false, options.archive ?? false);
       } catch (err) {

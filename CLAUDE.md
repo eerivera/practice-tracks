@@ -89,8 +89,14 @@ Elijah: TypeScript/Node.js developer, building for non-programmer worship leader
 
 ## Confirmed Preferences
 
-- Three docs: README (user), MAINTAINER (Elijah), CLAUDE (Claude)
+- Three docs: README (user), `_internal/MAINTAINER.md` (Elijah), CLAUDE (Claude)
 - `npm run check` as pre-commit gate
 - `--force` CLI flag + per-entry JSON `force: true` OR together; entry resets to false after success
 - `mix <song-dir>` always appends to `to-upload.json` on success, even when called outside the queue
 - `process-queue` command removed; replaced by `run`
+
+## Commit and PR Discipline (standing rule)
+
+- **Commits:** atomic, one logical change, conventional format (`feat(scope):`, `refactor(scope):`, `fix(scope):`). Tests pass at every commit. No WIP or typo-fix commits in history.
+- **PRs:** one coherent concern per PR. A refactor that enables a feature ships as its own PR before the feature PR. PRs must be independently reviewable.
+- **Why:** auditability as the codebase grows.
