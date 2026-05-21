@@ -20,6 +20,11 @@ processed-zips/*.zip
 queues/to-mix.json
 queues/to-upload.json
 
+# ffmpeg-core WASM files — large binaries copied from node_modules at build time
+# (run: node scripts/copy-ffmpeg-core.js)
+_internal/web/public/ffmpeg-core.js
+_internal/web/public/ffmpeg-core.wasm
+
 # PCO credentials — never commit
 .env
 .env.*

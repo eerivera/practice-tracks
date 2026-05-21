@@ -57,9 +57,8 @@ jobs:
         run: npm ci
 
       - name: Build browser bundle
-        run: npm run web:build
+        run: npm run web:build:static
         env:
-          VITE_BACKEND: browser
           VITE_BASE: /practice-tracks/
 
       - uses: actions/upload-pages-artifact@v3

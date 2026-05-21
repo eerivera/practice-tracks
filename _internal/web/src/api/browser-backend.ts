@@ -24,8 +24,10 @@ export class BrowserWasmBackend {
     if (this.ffmpegInstance) return this.ffmpegInstance;
     const { FFmpeg } = await import('@ffmpeg/ffmpeg');
     const ffmpeg = new FFmpeg();
-    const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-    await ffmpeg.load({ coreURL: `${base}/ffmpeg-core.js`, wasmURL: `${base}/ffmpeg-core.wasm` });
+    // Files are copied from node_modules/@ffmpeg/core at build time (Vite ffmpegCorePlugin)
+    // and served same-origin to avoid COEP/CORP conflicts with CDN hosts.
+    const base = (import.meta.env as { BASE_URL: string }).BASE_URL;
+    await ffmpeg.load({ coreURL: `${base}ffmpeg-core.js`, wasmURL: `${base}ffmpeg-core.wasm` });
     this.ffmpegInstance = ffmpeg;
     return ffmpeg;
   }

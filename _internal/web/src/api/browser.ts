@@ -88,11 +88,15 @@ export class BrowserApi implements ProcessingApi {
 
         if (song.stems.length > 0) {
           session.songs.push(song);
+          const t = Date.now();
+          es?.dispatch({ type: 'song_header', songName: displayName, stemsDir: '', outputDir: '' });
+          es?.dispatch({ type: 'extract_start', total: song.stems.length });
           es?.dispatch({
             type: 'stems_classified',
             stems: song.stems.map((s) => ({ filename: s.filename, ext: s.ext, category: s.category, index: s.index })),
             total: song.stems.length,
           });
+          es?.dispatch({ type: 'extract_complete', total: song.stems.length, elapsedMs: Date.now() - t });
         }
       }
 
