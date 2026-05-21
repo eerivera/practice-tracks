@@ -6,16 +6,10 @@ import { loadConfig } from './config/loader.js';
 import { classifyStems } from './stems/classifier.js';
 import { buildMixInputs } from './mixer.js';
 import { parseSongMetadata, formatOutputSubdir } from './extractor.js';
+import { consoleEmitter, type Emitter } from './events.js';
 import { type ClassifiedStem } from './types.js';
 
 const AUDIO_EXTENSIONS = /\.(m4a|wav|mp3|aiff?)$/i;
-
-function elapsed(startMs: number): string {
-  const ms = Date.now() - startMs;
-  return ms >= 60_000
-    ? `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`
-    : `${(ms / 1000).toFixed(1)}s`;
-}
 const CANDIDATE_STEMS_DIRS = ['stems', 'MultiTracks'];
 
 export interface PipelineOptions {
@@ -29,6 +23,7 @@ export interface PipelineOptions {
 export interface PipelineResult {
   skipped: boolean;
   outputDir: string;
+  mixFiles: string[];
 }
 
 function outputAlreadyExists(outputDir: string, mixNames: string[], format: string): boolean {
@@ -50,11 +45,10 @@ function findStemsDir(songDir: string, preferred?: string): string {
 }
 
 function archiveTimestamp(): string {
-  // "2026-05-19-133042"
   return new Date().toISOString().replace('T', '-').replace(/:/g, '').slice(0, 17);
 }
 
-function archiveExistingOutput(outputDir: string): void {
+function archiveExistingOutput(outputDir: string, emit: Emitter): void {
   if (!fs.existsSync(outputDir)) return;
   const existing = fs.readdirSync(outputDir).filter(
     (f) => !fs.statSync(path.join(outputDir, f)).isDirectory()
@@ -66,15 +60,16 @@ function archiveExistingOutput(outputDir: string): void {
   for (const file of existing) {
     fs.copyFileSync(path.join(outputDir, file), path.join(archiveDir, file));
   }
-  console.log(`Archived ${existing.length} previous mix(es) to ${path.relative(process.cwd(), archiveDir)}`);
+  emit({ type: 'archive', count: existing.length, archivePath: path.relative(process.cwd(), archiveDir) });
 }
 
-export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
+export async function runPipeline(
+  options: PipelineOptions,
+  emit: Emitter = consoleEmitter
+): Promise<PipelineResult> {
   const { songDir } = options;
   const stemsDir = findStemsDir(songDir, options.stemsDirName);
 
-  // Derive output subdirectory from key/bpm in the folder name, e.g. "output/Ab-68bpm/"
-  // Falls back to "output/" for manually organized folders without that pattern.
   const meta = parseSongMetadata(path.basename(songDir));
   const subdir = formatOutputSubdir(meta);
   const outputDir =
@@ -84,23 +79,23 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   const mixNames = config.mixes.map((m) => m.name);
 
   if (!options.force && outputAlreadyExists(outputDir, mixNames, config.output_format)) {
-    console.log(`[skip] ${path.basename(songDir)} — output already exists at ${path.relative(process.cwd(), outputDir)}`);
-    console.log(`       Set "force": true in queues/to-mix.json, or pass --force to override.\n`);
-    return { skipped: true, outputDir };
+    emit({
+      type: 'skip',
+      songName: path.basename(songDir),
+      reason: `output already exists at ${path.relative(process.cwd(), outputDir)}`,
+    });
+    return { skipped: true, outputDir, mixFiles: [] };
   }
 
-  console.log(`Song:   ${path.basename(songDir)}`);
-  console.log(`Stems:  ${stemsDir}`);
-  console.log(`Output: ${outputDir}`);
-  console.log('');
+  emit({ type: 'song_header', songName: path.basename(songDir), stemsDir, outputDir });
 
   if (options.archive) {
-    archiveExistingOutput(outputDir);
+    archiveExistingOutput(outputDir, emit);
   }
 
   fs.mkdirSync(outputDir, { recursive: true });
 
-  const backend = await createBackend();
+  const backend = await createBackend(emit);
 
   const stemFiles = fs
     .readdirSync(stemsDir)
@@ -115,22 +110,27 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   const unknownStems = stems.filter((s) => s.category === 'unknown');
   if (unknownStems.length > 0) {
-    console.warn(
-      `Warning: ${unknownStems.length} stem(s) could not be classified and will be included at 0 dB:`
-    );
-    for (const s of unknownStems) {
-      console.warn(`  ${s.filename}${path.extname(s.path)} — add a rule in config or rename the file`);
-    }
-    console.warn('');
+    emit({
+      type: 'warn',
+      message:
+        `Warning: ${unknownStems.length} stem(s) could not be classified and will be included at 0 dB:\n` +
+        unknownStems
+          .map((s) => `  ${s.filename}${path.extname(s.path)} — add a rule in config or rename the file`)
+          .join('\n') +
+        '\n',
+    });
   }
 
-  console.log(`Found ${stems.length} stems:`);
-  for (const stem of stems) {
-    const ext = path.extname(stem.path).slice(1);
-    const idx = stem.index !== undefined ? ` [${stem.index}]` : '';
-    console.log(`  ${stem.filename}.${ext}  →  ${stem.category}${idx}`);
-  }
-  console.log('');
+  emit({
+    type: 'stems_classified',
+    total: stems.length,
+    stems: stems.map((s) => ({
+      filename: s.filename,
+      ext: path.extname(s.path).slice(1),
+      category: s.category,
+      index: s.index,
+    })),
+  });
 
   const pipelineStart = Date.now();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-'));
@@ -139,19 +139,16 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     const configured = config.normalization_concurrency ?? 0;
     const concurrency = Math.min(
       configured > 0 ? configured : backend.maxConcurrency,
-      backend.maxConcurrency, // WASM always caps at 1 regardless of config
+      backend.maxConcurrency,
       stems.length
     );
-    const concurrencyNote = concurrency > 1 ? ` (${concurrency} at a time)` : '';
-    console.log(`Normalizing ${stems.length} stems to ${config.target_lufs} LUFS${concurrencyNote}...`);
+
+    emit({ type: 'normalize_start', total: stems.length, concurrency, targetLufs: config.target_lufs });
     const normalizeStart = Date.now();
 
     const normalizedStems: ClassifiedStem[] = new Array(stems.length);
     let completed = 0;
 
-    // Worker queue: each worker grabs the next unstarted stem until the queue
-    // is empty. Node.js's single-threaded event loop makes queue.shift() safe
-    // here — only one worker can execute between awaits at any given time.
     const queue = stems.map((stem, i) => ({ stem, i }));
     async function normalizeWorker(): Promise<void> {
       let next = queue.shift();
@@ -165,34 +162,34 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
         });
         normalizedStems[i] = { ...stem, path: tmpPath };
         completed++;
-        console.log(`  [${completed}/${stems.length}] ${stem.filename} (${elapsed(t)})`);
+        emit({ type: 'stem_normalized', name: stem.filename, index: completed, total: stems.length, timeMs: Date.now() - t });
         next = queue.shift();
       }
     }
 
     await Promise.all(Array.from({ length: concurrency }, normalizeWorker));
-    console.log(`Normalization complete (${elapsed(normalizeStart)} total)\n`);
+    emit({ type: 'normalize_complete', total: stems.length, elapsedMs: Date.now() - normalizeStart });
 
-    console.log('Generating mixes...');
+    emit({ type: 'mix_start', total: config.mixes.length });
+    const mixFiles: string[] = [];
+
     for (const mixDef of config.mixes) {
       const inputs = buildMixInputs(normalizedStems, mixDef, config);
       if (inputs.length === 0) {
-        console.log(`  [skip] ${mixDef.name} — no stems match`);
+        emit({ type: 'mix_skipped', name: mixDef.name, reason: 'no stems match' });
         continue;
       }
       const outputPath = path.join(outputDir, `${mixDef.name}.${config.output_format}`);
       const t = Date.now();
-      process.stdout.write(`  ${mixDef.name} (${inputs.length} stems)...`);
       await backend.mix(inputs, outputPath, config.output_format);
-      process.stdout.write(` done (${elapsed(t)})\n`);
+      emit({ type: 'mix_generated', name: mixDef.name, stems: inputs.length, timeMs: Date.now() - t });
+      mixFiles.push(outputPath);
     }
 
-    console.log('');
-    console.log(`All mixes written to: ${outputDir}`);
-    console.log(`Total time: ${elapsed(pipelineStart)}`);
+    emit({ type: 'pipeline_complete', outputDir, elapsedMs: Date.now() - pipelineStart, skipped: false, mixFiles });
+
+    return { skipped: false, outputDir, mixFiles };
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
-
-  return { skipped: false, outputDir };
 }

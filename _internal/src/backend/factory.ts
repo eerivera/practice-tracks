@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import { type AudioBackend } from './interface.js';
 import { NativeFFmpegBackend } from './native.js';
 import { WasmFFmpegBackend } from './wasm.js';
+import { consoleEmitter, type Emitter } from '../events.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -17,12 +18,12 @@ async function findFFmpegPath(): Promise<string | null> {
   }
 }
 
-export async function createBackend(): Promise<AudioBackend> {
+export async function createBackend(emit: Emitter = consoleEmitter): Promise<AudioBackend> {
   const ffmpegPath = await findFFmpegPath();
   if (ffmpegPath) {
-    console.log(`Backend: native FFmpeg (${ffmpegPath})`);
+    emit({ type: 'backend', kind: 'native', ffmpegPath });
     return new NativeFFmpegBackend(ffmpegPath);
   }
-  console.log('Backend: WASM (FFmpeg not found in PATH — install via "brew install ffmpeg" for faster processing)');
+  emit({ type: 'backend', kind: 'wasm' });
   return new WasmFFmpegBackend();
 }
