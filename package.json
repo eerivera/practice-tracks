@@ -22,7 +22,8 @@
     "web": "vite build _internal/web && tsx _internal/src/server.ts",
     "web:dev": "concurrently -n server,vite -c blue,cyan \"tsx watch _internal/src/server.ts\" \"vite _internal/web\"",
     "web:build": "vite build _internal/web",
-    "web:build:static": "VITE_BACKEND=browser vite build _internal/web"
+    "web:build:static": "VITE_BACKEND=browser vite build _internal/web",
+    "web:preview": "vite preview _internal/web"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",

@@ -248,9 +248,11 @@ _internal/
 
 The browser build is deployed automatically to GitHub Pages on every push to `main` via `.github/workflows/deploy.yml`. It runs `VITE_BACKEND=browser VITE_BASE=/practice-tracks/ npm run web:build`.
 
-**coi-serviceworker** — a service worker vendored at `_internal/web/public/coi-serviceworker.js` (v0.1.7, MIT). GitHub Pages cannot set `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` response headers, which are required for `SharedArrayBuffer` (used internally by @ffmpeg/ffmpeg). The service worker injects these headers on every response. The page reloads once on first visit to activate the worker. Check for updates at https://github.com/gzuidhof/coi-serviceworker/releases and replace the file if a meaningful update ships.
+**coi-serviceworker** — a service worker vendored at `_internal/web/public/coi-serviceworker.js` (v0.1.7, MIT). GitHub Pages cannot set `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` response headers, which are required for `SharedArrayBuffer` (used internally by @ffmpeg/ffmpeg). The service worker injects these headers on every response. The page reloads once on first visit to activate the worker. Check for updates at https://github.com/gzuidhof/coi-serviceworker/releases and replace the file if a meaningful update ships. It must stay in `public/` (not `node_modules` via `new URL()`) because service workers require a stable, non-hashed URL for registration and scope.
 
-**Future:** switching to Netlify or Cloudflare Pages would let us set these headers natively (via `_headers` file) and remove the service worker entirely.
+**@ffmpeg/core files** — `ffmpeg-core.js` (ESM) and `ffmpeg-core.wasm` are referenced in `browser-backend.ts` via Vite's `new URL('../../../../node_modules/@ffmpeg/core/...', import.meta.url)` pattern. Vite resolves these at build time, copies them to `dist/assets/` with content hashes, and returns the correct URL. No manual copying needed; they stay in sync with whatever `@ffmpeg/core` version npm has installed. The ESM version (not UMD) is required because the @ffmpeg/ffmpeg Worker's fallback uses `import().default`, which only works with a module that has a real `default` export. `toBlobURL` from `@ffmpeg/util` is also required — raw URLs fail silently in Vite's bundled Worker context.
+
+**Future:** switching to Netlify or Cloudflare Pages would let us set COOP/COEP headers natively (via `_headers` file) and remove the service worker entirely.
 
 ### Tailwind + PostCSS config note
 
