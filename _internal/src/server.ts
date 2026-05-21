@@ -7,7 +7,7 @@ import open from 'open';
 import { zipSync } from 'fflate';
 import { runNormalize, runMix, hasExistingOutput, type NormalizeResult } from './pipeline.js';
 import { extractMultitrackZip } from './extractor.js';
-import { loadConfig } from './config/loader.js';
+import { loadBaseConfig, saveBaseConfig, resetBaseConfig } from './config/loader.js';
 import { getMixQueue, getUploadQueue } from './queue.js';
 import { consoleEmitter, type Emitter, type ProgressEvent } from '../common/events.js';
 import { loadEnv } from './env.js';
@@ -63,7 +63,20 @@ app.get('/api/status', (_req: Request, res: Response) => {
 });
 
 app.get('/api/config', (_req: Request, res: Response) => {
-  res.json(loadConfig('.'));
+  res.json(loadBaseConfig());
+});
+
+app.post('/api/config', (req: Request, res: Response) => {
+  try {
+    saveBaseConfig(req.body as Parameters<typeof saveBaseConfig>[0]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.delete('/api/config', (_req: Request, res: Response) => {
+  res.json(resetBaseConfig());
 });
 
 // SSE stream — client opens this before each step to receive progress events

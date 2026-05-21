@@ -114,7 +114,7 @@ export class BrowserApi implements ProcessingApi {
     const session = this.sessions.get(sessionId);
     if (!session) { es?.dispatch({ type: 'error', message: 'Session not found' }); return; }
 
-    const config: Config = DEFAULT_CONFIG;
+    const config: Config = await this.getConfig();
     const songs = session.songs.filter((s) => songDirs.includes(s.songDir));
     const totalStems = songs.reduce((n, s) => n + s.stems.length, 0);
 
@@ -144,7 +144,7 @@ export class BrowserApi implements ProcessingApi {
     const session = this.sessions.get(sessionId);
     if (!session) { es?.dispatch({ type: 'error', message: 'Session not found' }); return; }
 
-    const config: Config = DEFAULT_CONFIG;
+    const config: Config = await this.getConfig();
     es?.dispatch({ type: 'mix_start', total: session.songs.length * config.mixes.length });
 
     for (const song of session.songs) {
@@ -215,7 +215,23 @@ export class BrowserApi implements ProcessingApi {
 
   // ── Query methods ─────────────────────────────────────────────────────────────
 
+  private static readonly STORAGE_KEY = 'practiceTracksConfig';
+
   getConfig(): Promise<Config> {
+    const saved = localStorage.getItem(BrowserApi.STORAGE_KEY);
+    if (saved) {
+      try { return Promise.resolve(JSON.parse(saved) as Config); } catch { /* fall through */ }
+    }
+    return Promise.resolve(DEFAULT_CONFIG);
+  }
+
+  saveConfig(config: Config): Promise<void> {
+    localStorage.setItem(BrowserApi.STORAGE_KEY, JSON.stringify(config));
+    return Promise.resolve();
+  }
+
+  resetConfig(): Promise<Config> {
+    localStorage.removeItem(BrowserApi.STORAGE_KEY);
     return Promise.resolve(DEFAULT_CONFIG);
   }
 

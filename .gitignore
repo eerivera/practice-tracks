@@ -20,6 +20,9 @@ processed-zips/*.zip
 queues/to-mix.json
 queues/to-upload.json
 
+# User-saved mix config (template is default_mix.yaml — never overwritten by app)
+config/user_mix.yaml
+
 # PCO credentials — never commit
 .env
 .env.*

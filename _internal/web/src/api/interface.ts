@@ -16,6 +16,12 @@ export interface ProcessingApi {
   /** Return the current default mix configuration (for the soundboard). */
   getConfig(): Promise<Config>;
 
+  /** Persist config as the new default (server: writes user_mix.yaml; browser: localStorage). */
+  saveConfig(config: Config): Promise<void>;
+
+  /** Reset to factory default and return it (server: deletes user_mix.yaml; browser: clears localStorage). */
+  resetConfig(): Promise<Config>;
+
   /** Return the current queue state. */
   getStatus(): Promise<QueueStatus>;
 
