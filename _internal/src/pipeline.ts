@@ -38,9 +38,15 @@ export interface NormalizeResult {
   pipelineStartMs: number;
 }
 
+function mixFilename(songTitle: string, mixName: string, format: string): string {
+  return `${songTitle} - ${mixName}.${format}`;
+}
+
 function outputAlreadyExists(outputDir: string, songTitle: string, mixNames: string[], format: string): boolean {
   if (!fs.existsSync(outputDir)) return false;
-  return mixNames.every((name) => fs.existsSync(path.join(outputDir, `${songTitle} - ${name}.${format}`)));
+  return mixNames.every((name) =>
+    fs.existsSync(path.join(outputDir, mixFilename(songTitle, name, format)))
+  );
 }
 
 function findStemsDir(songDir: string, preferred?: string): string {
@@ -211,7 +217,7 @@ export async function runMix(
       emit({ type: 'mix_skipped', name: mixDef.name, reason: 'no stems match' });
       continue;
     }
-    const outputPath = path.join(outputDir, `${songTitle} - ${mixDef.name}.${config.output_format}`);
+    const outputPath = path.join(outputDir, mixFilename(songTitle, mixDef.name, config.output_format));
     const t = Date.now();
     await backend.mix(inputs, outputPath, config.output_format);
     emit({ type: 'mix_generated', name: mixDef.name, stems: inputs.length, timeMs: Date.now() - t });

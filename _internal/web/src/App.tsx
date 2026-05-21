@@ -229,24 +229,40 @@ export function App() {
         {/* Extracted — waiting for Normalize */}
         {phase === 'extracted' && (
           <div className="space-y-3">
-            {existingOutputCount > 0 && (
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-900/30 border border-amber-700/50 rounded-lg text-sm text-amber-300">
-                <span className="mt-px">⚠</span>
-                <span>
-                  {existingOutputCount === 1 ? '1 song already has' : `${existingOutputCount} songs already have`} mix files — {existingOutputCount === 1 ? 'it' : 'they'} will be skipped unless you force reprocess.
-                </span>
-              </div>
-            )}
             <div className="flex items-start gap-2 px-3 py-2.5 bg-slate-800 rounded-lg text-sm text-slate-400">
-              <span className="mt-px">ℹ</span>
-              <span>Normalize must be re-run each session until stem caching is added (coming soon).</span>
+              <span className="mt-px shrink-0">ℹ</span>
+              <span>Stems must be re-normalized each session — caching is coming soon.</span>
             </div>
-            <button
-              onClick={() => handleNormalize()}
-              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
-            >
-              Normalize / Convert
-            </button>
+
+            {existingOutputCount > 0 ? (
+              <>
+                <p className="text-sm text-slate-300 px-1">
+                  {existingOutputCount === 1 ? '1 song' : `${existingOutputCount} songs`} already{' '}
+                  {existingOutputCount === 1 ? 'has' : 'have'} mix files. Keep them or regenerate?
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => handleNormalize(false)}
+                    className="flex-1 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
+                  >
+                    Keep existing
+                  </button>
+                  <button
+                    onClick={() => handleNormalize(true)}
+                    className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
+                  >
+                    Regenerate all
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                onClick={() => handleNormalize()}
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
+              >
+                Normalize / Convert
+              </button>
+            )}
           </div>
         )}
 
