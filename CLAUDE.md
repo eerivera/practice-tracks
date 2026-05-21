@@ -1,6 +1,6 @@
 # Claude Project Memory — Practice Tracks
 
-This file is for Claude. Human developer notes are in `MAINTAINER.md`.
+This file is for Claude. Human developer notes are in `_internal/MAINTAINER.md`.
 
 ---
 

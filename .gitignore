@@ -1,5 +1,5 @@
 node_modules/
-dist/
+_internal/dist/
 .DS_Store
 
 # In song directories, only .yaml and .json config files are committed.

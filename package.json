@@ -7,17 +7,17 @@
     "node": ">=18.0.0"
   },
   "bin": {
-    "practice-mix": "./src/cli.ts"
+    "practice-mix": "./_internal/src/cli.ts"
   },
   "scripts": {
-    "mix": "tsx src/cli.ts",
-    "clean": "tsx src/cli.ts clean",
-    "clean:full": "tsx src/cli.ts clean --full",
-    "type-check": "tsc --noEmit",
-    "lint": "eslint src tests",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "build": "tsc --outDir dist",
+    "mix": "tsx _internal/src/cli.ts",
+    "clean": "tsx _internal/src/cli.ts clean",
+    "clean:full": "tsx _internal/src/cli.ts clean --full",
+    "type-check": "tsc --project _internal/tsconfig.json --noEmit",
+    "lint": "eslint --config _internal/eslint.config.js _internal/src _internal/tests",
+    "test": "vitest run --config _internal/vitest.config.ts",
+    "test:watch": "vitest --config _internal/vitest.config.ts",
+    "build": "tsc --project _internal/tsconfig.json",
     "check": "npm run type-check && npm run lint && npm run test"
   },
   "dependencies": {
