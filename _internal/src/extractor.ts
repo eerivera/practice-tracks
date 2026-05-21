@@ -24,6 +24,12 @@ export function parseSongMetadata(name: string): SongMetadata {
   return { key: match[1], bpmRaw: match[2] };
 }
 
+// Strips the key-signature/BPM suffix to produce a human-readable title.
+// "Who Else-Crowns Down (Live)-Ab-68.00bpm" → "Who Else-Crowns Down (Live)"
+export function formatSongDisplayName(dirPath: string): string {
+  return path.basename(dirPath).replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
+}
+
 // Formats a subdirectory name from metadata, e.g. "Ab-68bpm".
 // Returns null if the metadata lacks key or BPM (e.g. manually organized folders).
 export function formatOutputSubdir(meta: SongMetadata): string | null {

@@ -1,8 +1,14 @@
 import type { Config, QueueStatus, SongOutputs } from '../types.js';
 
 export interface ProcessingApi {
-  /** Upload zip files and begin processing. */
-  processZips(files: File[], sessionId: string, force?: boolean): Promise<void>;
+  /** Step 1: upload zip files and extract stems to disk. */
+  extractZips(files: File[], sessionId: string): Promise<void>;
+
+  /** Step 2: normalise stems for previously extracted song directories. */
+  normalizeSongs(songDirs: string[], sessionId: string, force?: boolean): Promise<void>;
+
+  /** Step 3: mix from the normalised stems held by a prior normalizeSongs call. */
+  mixSongs(sessionId: string): Promise<void>;
 
   /** Open an SSE stream for the given session. */
   getEventStream(sessionId: string): EventSource;
@@ -12,6 +18,9 @@ export interface ProcessingApi {
 
   /** Return the current queue state. */
   getStatus(): Promise<QueueStatus>;
+
+  /** Check which song directories already have output files (before normalize). */
+  checkOutputs(songDirs: string[]): Promise<Array<{ songDir: string; hasOutput: boolean }>>;
 
   /** List all existing mix files on disk, organised by song → variant. */
   getOutputs(): Promise<SongOutputs[]>;

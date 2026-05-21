@@ -2,15 +2,30 @@ import type { Config, QueueStatus, SongOutputs } from '../types.js';
 import type { ProcessingApi } from './interface.js';
 
 export class ServerApi implements ProcessingApi {
-  async processZips(files: File[], sessionId: string, force?: boolean): Promise<void> {
+  async extractZips(files: File[], sessionId: string): Promise<void> {
     const form = new FormData();
     form.append('sessionId', sessionId);
-    form.append('force', String(force ?? false));
-    for (const file of files) {
-      form.append('zips', file, file.name);
-    }
-    const res = await fetch('/api/process', { method: 'POST', body: form });
-    if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+    for (const file of files) form.append('zips', file, file.name);
+    const res = await fetch('/api/extract', { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`Extract failed: ${res.statusText}`);
+  }
+
+  async normalizeSongs(songDirs: string[], sessionId: string, force?: boolean): Promise<void> {
+    const res = await fetch('/api/normalize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, songDirs, force: force ?? false }),
+    });
+    if (!res.ok) throw new Error(`Normalize failed: ${res.statusText}`);
+  }
+
+  async mixSongs(sessionId: string): Promise<void> {
+    const res = await fetch('/api/mix', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    });
+    if (!res.ok) throw new Error(`Mix failed: ${res.statusText}`);
   }
 
   getEventStream(sessionId: string): EventSource {
@@ -27,6 +42,16 @@ export class ServerApi implements ProcessingApi {
     const res = await fetch('/api/status');
     if (!res.ok) throw new Error('Failed to load status');
     return res.json() as Promise<QueueStatus>;
+  }
+
+  async checkOutputs(songDirs: string[]): Promise<Array<{ songDir: string; hasOutput: boolean }>> {
+    const res = await fetch('/api/check-outputs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ songDirs }),
+    });
+    if (!res.ok) throw new Error('Failed to check outputs');
+    return res.json() as Promise<Array<{ songDir: string; hasOutput: boolean }>>;
   }
 
   async getOutputs(): Promise<SongOutputs[]> {

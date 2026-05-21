@@ -4,7 +4,15 @@ import type { Config, QueueStatus, SongOutputs } from '../types.js';
 import type { ProcessingApi } from './interface.js';
 
 export class BrowserApi implements ProcessingApi {
-  processZips(_files: File[], _sessionId: string, _force?: boolean): Promise<void> {
+  extractZips(_files: File[], _sessionId: string): Promise<void> {
+    return Promise.reject(new Error('Browser API not yet implemented'));
+  }
+
+  normalizeSongs(_songDirs: string[], _sessionId: string, _force?: boolean): Promise<void> {
+    return Promise.reject(new Error('Browser API not yet implemented'));
+  }
+
+  mixSongs(_sessionId: string): Promise<void> {
     return Promise.reject(new Error('Browser API not yet implemented'));
   }
 
@@ -17,6 +25,10 @@ export class BrowserApi implements ProcessingApi {
   }
 
   getStatus(): Promise<QueueStatus> {
+    return Promise.reject(new Error('Browser API not yet implemented'));
+  }
+
+  checkOutputs(_songDirs: string[]): Promise<Array<{ songDir: string; hasOutput: boolean }>> {
     return Promise.reject(new Error('Browser API not yet implemented'));
   }
 
