@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import open from 'open';
-import AdmZip from 'adm-zip';
+import { zipSync } from 'fflate';
 import { runNormalize, runMix, hasExistingOutput, type NormalizeResult } from './pipeline.js';
 import { extractMultitrackZip } from './extractor.js';
 import { loadConfig } from './config/loader.js';
@@ -265,9 +265,9 @@ app.get('/api/download-zip/:encodedVariantDir', (req: Request, res: Response) =>
   }
 
   const AUDIO_RE = /\.(m4a|mp3|wav|aiff?)$/i;
-  const zip = new AdmZip();
+  const zipFiles: Record<string, Uint8Array> = {};
   for (const file of fs.readdirSync(resolved)) {
-    if (AUDIO_RE.test(file)) zip.addLocalFile(path.join(resolved, file));
+    if (AUDIO_RE.test(file)) zipFiles[file] = new Uint8Array(fs.readFileSync(path.join(resolved, file)));
   }
 
   const parts = decoded.split('/');
@@ -277,7 +277,7 @@ app.get('/api/download-zip/:encodedVariantDir', (req: Request, res: Response) =>
 
   res.setHeader('Content-Disposition', `attachment; filename="${displayName}.zip"`);
   res.setHeader('Content-Type', 'application/zip');
-  res.send(zip.toBuffer());
+  res.send(Buffer.from(zipSync(zipFiles)));
 });
 
 // Serve a generated mix file for download.

@@ -1,4 +1,4 @@
-import AdmZip from 'adm-zip';
+import { unzipSync } from 'fflate';
 import { writeFileSync } from 'fs';
 import fs from 'fs';
 import path from 'path';
@@ -39,20 +39,20 @@ export function formatOutputSubdir(meta: SongMetadata): string | null {
 }
 
 // Extracts a Multitracks.com zip into songs/<song-name>/stems/.
-// Uses adm-zip (pure JS) so it works on macOS, Windows, and Linux without system tools.
+// Uses fflate (pure JS) so it works on macOS, Windows, and Linux without system tools.
 export function extractMultitrackZip(
   zipPath: string,
   songsDir: string,
   emit: Emitter = consoleEmitter
 ): ExtractResult {
-  const zip = new AdmZip(zipPath);
-  const entries = zip.getEntries();
+  const entries = unzipSync(new Uint8Array(fs.readFileSync(zipPath)));
 
-  // Stem files live at <TopDir>/MultiTracks/*.m4a inside the zip
-  const stemEntries = entries.filter(
-    (e) =>
-      !e.isDirectory &&
-      /[/\\]MultiTracks[/\\][^/\\]+\.(m4a|wav|aiff?)$/i.test(e.entryName)
+  // Stem files live at <TopDir>/MultiTracks/*.m4a inside the zip.
+  // fflate keys are full paths; directories end with '/'.
+  const stemEntries = Object.entries(entries).filter(
+    ([name]) =>
+      !name.endsWith('/') &&
+      /[/\\]MultiTracks[/\\][^/\\]+\.(m4a|wav|aiff?)$/i.test(name)
   );
   if (stemEntries.length === 0) {
     throw new Error(
@@ -71,20 +71,25 @@ export function extractMultitrackZip(
   const extractStart = Date.now();
 
   for (let i = 0; i < stemEntries.length; i++) {
-    const entry = stemEntries[i];
+    const [entryPath, data] = stemEntries[i];
+    const entryName = entryPath.split('/').pop();
+    if (!entryName) continue;
     const t = Date.now();
-    writeFileSync(path.join(stemsDir, entry.name), entry.getData());
-    emit({ type: 'stem_extracted', name: entry.name, index: i + 1, total: stemEntries.length, timeMs: Date.now() - t });
+    writeFileSync(path.join(stemsDir, entryName), data);
+    emit({ type: 'stem_extracted', name: entryName, index: i + 1, total: stemEntries.length, timeMs: Date.now() - t });
   }
 
   emit({ type: 'extract_complete', total: stemEntries.length, elapsedMs: Date.now() - extractStart });
 
   // Copy album art if present
-  const albumEntry = entries.find(
-    (e) => !e.isDirectory && /^Album\.jpe?g$/i.test(e.name)
-  );
+  const albumEntry = Object.entries(entries).find(([name]) => {
+    const basename = name.split('/').pop() ?? '';
+    return !name.endsWith('/') && /^Album\.jpe?g$/i.test(basename);
+  });
   if (albumEntry) {
-    writeFileSync(path.join(songDir, albumEntry.name), albumEntry.getData());
+    const [albumPath, albumData] = albumEntry;
+    const albumName = albumPath.split('/').pop() ?? albumPath;
+    writeFileSync(path.join(songDir, albumName), albumData);
   }
 
   return { songDir, songName, stemCount: stemEntries.length, metadata };
