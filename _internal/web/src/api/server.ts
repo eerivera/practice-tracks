@@ -38,6 +38,21 @@ export class ServerApi implements ProcessingApi {
     return res.json() as Promise<Config>;
   }
 
+  async saveConfig(config: Config): Promise<void> {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    if (!res.ok) throw new Error('Failed to save config');
+  }
+
+  async resetConfig(): Promise<Config> {
+    const res = await fetch('/api/config', { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to reset config');
+    return res.json() as Promise<Config>;
+  }
+
   async getStatus(): Promise<QueueStatus> {
     const res = await fetch('/api/status');
     if (!res.ok) throw new Error('Failed to load status');
