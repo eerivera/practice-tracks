@@ -108,11 +108,11 @@ function StemChannel({ category, gainDb, muted, excluded, onGainChange, onMuteTo
 
       {/* Category label — click to exclude/include */}
       <button
-        className={`text-[11px] text-center leading-tight w-14 rounded px-0.5 transition-colors ${excluded ? 'text-slate-700 hover:text-slate-500' : 'text-slate-300 hover:text-white'}`}
+        className={`text-[11px] text-center leading-tight w-14 break-words rounded px-0.5 transition-colors ${excluded ? 'text-slate-700 hover:text-slate-500' : 'text-slate-300 hover:text-white'}`}
         onClick={onExcludeToggle}
         title={excluded ? 'Click to include stem' : 'Click to exclude stem'}
       >
-        {category}
+        {category.replace(/_/g, ' ')}
       </button>
 
       {/* Mute button */}
@@ -253,7 +253,7 @@ export function Soundboard({ config, onChange }: Props) {
   return (
     <div className="space-y-3">
       {/* Mix tabs */}
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
         {config.mixes.map((m, i) => (
           <MixTab
             key={i}
@@ -292,7 +292,7 @@ export function Soundboard({ config, onChange }: Props) {
       </div>
 
       <p className="text-[11px] text-slate-600">
-        Click fader to set gain · Click label to exclude/include · M to mute · Double-click tab to rename
+        Click fader to set gain · Click label to exclude/include · M to mute · Double-click preset to rename
       </p>
     </div>
   );
