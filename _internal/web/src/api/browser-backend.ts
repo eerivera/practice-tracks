@@ -23,11 +23,21 @@ export class BrowserWasmBackend {
   private async getFFmpeg(): Promise<FFmpeg> {
     if (this.ffmpegInstance) return this.ffmpegInstance;
     const { FFmpeg } = await import('@ffmpeg/ffmpeg');
+    const { toBlobURL } = await import('@ffmpeg/util');
     const ffmpeg = new FFmpeg();
-    // Files are copied from node_modules/@ffmpeg/core at build time (Vite ffmpegCorePlugin)
-    // and served same-origin to avoid COEP/CORP conflicts with CDN hosts.
-    const base = (import.meta.env as { BASE_URL: string }).BASE_URL;
-    await ffmpeg.load({ coreURL: `${base}ffmpeg-core.js`, wasmURL: `${base}ffmpeg-core.wasm` });
+    // new URL() lets Vite resolve these at build time directly from node_modules,
+    // copy them to dist/assets/, and return the correct URL — no manual file copying.
+    // ESM version (not UMD) is required: the Worker's importScripts fallback uses
+    // import().default, which only works when the module has an actual default export.
+    const coreURL = await toBlobURL(
+      new URL('../../../../node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js', import.meta.url).href,
+      'text/javascript',
+    );
+    const wasmURL = await toBlobURL(
+      new URL('../../../../node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.wasm', import.meta.url).href,
+      'application/wasm',
+    );
+    await ffmpeg.load({ coreURL, wasmURL });
     this.ffmpegInstance = ffmpeg;
     return ffmpeg;
   }
