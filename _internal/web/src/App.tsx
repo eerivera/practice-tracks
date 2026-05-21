@@ -9,13 +9,6 @@ import type { Config, ProgressEvent, SongOutputs } from './types.js';
 const api = createApi();
 
 // Each phase is a distinct user-triggered step.
-// 'files_selected'  — zips dropped, waiting for Extract click
-// 'extracting'      — extraction in progress
-// 'extracted'       — stems on disk, waiting for Normalize click
-// 'normalizing'     — normalization in progress
-// 'normalized'      — stems normalized, waiting for Mix click
-// 'mixing'          — mixing in progress
-// 'complete'        — output files written
 type Phase =
   | 'idle'
   | 'files_selected'
@@ -32,9 +25,12 @@ export function App() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [events, setEvents] = useState<ProgressEvent[]>([]);
   const [songDirs, setSongDirs] = useState<string[]>([]);
+  const [existingOutputCount, setExistingOutputCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [showForceModal, setShowForceModal] = useState(false);
   const filesRef = useRef<File[] | null>(null);
+  // One sessionId per batch — shared across all three steps so the server can
+  // match normalize results to the subsequent mix request.
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const esRef = useRef<EventSource | null>(null);
 
@@ -79,15 +75,26 @@ export function App() {
     if (!filesRef.current) return;
     setEvents([]);
     setSongDirs([]);
+    setExistingOutputCount(0);
     setSkippedCount(0);
     setShowForceModal(false);
+    // Generate one sessionId for this entire batch; normalize and mix reuse it.
     sessionIdRef.current = crypto.randomUUID();
     setPhase('extracting');
 
     const extracted: string[] = [];
     openSse(
       (event) => { if (event.type === 'songs_ready') extracted.push(...event.songDirs); },
-      () => { setSongDirs(extracted); setPhase('extracted'); }
+      () => {
+        setSongDirs(extracted);
+        setPhase('extracted');
+        // Check for existing output now that we have song titles/keys/BPMs.
+        if (extracted.length > 0) {
+          api.checkOutputs(extracted)
+            .then((results) => setExistingOutputCount(results.filter((r) => r.hasOutput).length))
+            .catch(console.error);
+        }
+      }
     );
     api.extractZips(filesRef.current, sessionIdRef.current).catch((err: Error) => {
       setEvents((prev) => [...prev, { type: 'error', message: err.message }]);
@@ -98,7 +105,7 @@ export function App() {
     if (!songDirs.length) return;
     setSkippedCount(0);
     setShowForceModal(false);
-    sessionIdRef.current = crypto.randomUUID();
+    // Reuse the sessionId from extract — server looks up normalize results by it.
     setPhase('normalizing');
 
     let skips = 0;
@@ -112,7 +119,7 @@ export function App() {
   }
 
   function handleMix() {
-    sessionIdRef.current = crypto.randomUUID();
+    // Reuse the sessionId from normalize — server retrieves held stems by it.
     setPhase('mixing');
 
     openSse(
@@ -137,6 +144,7 @@ export function App() {
     esRef.current = null;
     setEvents([]);
     setSongDirs([]);
+    setExistingOutputCount(0);
     setSkippedCount(0);
     setShowForceModal(false);
     filesRef.current = null;
@@ -147,7 +155,9 @@ export function App() {
 
   const isProcessing = ['extracting', 'normalizing', 'mixing'].includes(phase);
   const showLog = phase !== 'idle' && phase !== 'files_selected';
-  const showSoundboard = config && !isProcessing;
+  // Soundboard only shown after stems have been normalised — the mixing panel
+  // is not relevant before that point.
+  const showSoundboard = config && (phase === 'normalized' || phase === 'complete');
   const showPastMixes = !isProcessing;
 
   return (
@@ -218,15 +228,29 @@ export function App() {
 
         {/* Extracted — waiting for Normalize */}
         {phase === 'extracted' && (
-          <button
-            onClick={() => handleNormalize()}
-            className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
-          >
-            Normalize / Convert
-          </button>
+          <div className="space-y-3">
+            {existingOutputCount > 0 && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-900/30 border border-amber-700/50 rounded-lg text-sm text-amber-300">
+                <span className="mt-px">⚠</span>
+                <span>
+                  {existingOutputCount === 1 ? '1 song already has' : `${existingOutputCount} songs already have`} mix files — {existingOutputCount === 1 ? 'it' : 'they'} will be skipped unless you force reprocess.
+                </span>
+              </div>
+            )}
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-slate-800 rounded-lg text-sm text-slate-400">
+              <span className="mt-px">ℹ</span>
+              <span>Normalize must be re-run each session until stem caching is added (coming soon).</span>
+            </div>
+            <button
+              onClick={() => handleNormalize()}
+              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
+            >
+              Normalize / Convert
+            </button>
+          </div>
         )}
 
-        {/* Normalized — waiting for Mix (or force modal has appeared) */}
+        {/* Normalized — waiting for Mix (or force modal is showing) */}
         {phase === 'normalized' && !showForceModal && (
           <button
             onClick={handleMix}
@@ -246,7 +270,7 @@ export function App() {
           </button>
         )}
 
-        {/* Soundboard */}
+        {/* Soundboard — only visible after normalize so it's contextually relevant */}
         {showSoundboard && (
           <div className="space-y-2">
             <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">Mix Presets</h2>

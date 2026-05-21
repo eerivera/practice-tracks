@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import open from 'open';
 import AdmZip from 'adm-zip';
-import { runNormalize, runMix, type NormalizeResult } from './pipeline.js';
+import { runNormalize, runMix, hasExistingOutput, type NormalizeResult } from './pipeline.js';
 import { extractMultitrackZip } from './extractor.js';
 import { loadConfig } from './config/loader.js';
 import { getMixQueue, getUploadQueue } from './queue.js';
@@ -193,6 +193,17 @@ app.post('/api/mix', async (req: Request, res: Response) => {
     cleanupNormalized(sessionId);
     emit({ type: 'session_complete' });
   }
+});
+
+// Check whether output files already exist for a set of song directories.
+// Called by the client right after extraction so it can warn before normalize.
+app.post('/api/check-outputs', (req: Request, res: Response) => {
+  const { songDirs } = req.body as { songDirs: string[] };
+  if (!Array.isArray(songDirs)) {
+    res.status(400).json({ error: 'songDirs required' });
+    return;
+  }
+  res.json(songDirs.map((songDir) => ({ songDir, hasOutput: hasExistingOutput(songDir) })));
 });
 
 // List all existing mix files, organised by song → key/BPM variant → mix name.

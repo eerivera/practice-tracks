@@ -75,6 +75,22 @@ function archiveExistingOutput(outputDir: string, emit: Emitter): void {
   emit({ type: 'archive', count: existing.length, archivePath: path.relative(process.cwd(), archiveDir) });
 }
 
+// Returns true if all expected mix files already exist for the given song directory.
+// Used by the server to inform the client before the normalize step begins.
+export function hasExistingOutput(songDir: string): boolean {
+  try {
+    const meta = parseSongMetadata(path.basename(songDir));
+    const subdir = formatOutputSubdir(meta);
+    const outputDir = path.join(songDir, 'output', ...(subdir ? [subdir] : []));
+    const config = loadConfig(songDir);
+    const songTitle = formatSongDisplayName(songDir);
+    const mixNames = config.mixes.map((m) => m.name);
+    return outputAlreadyExists(outputDir, songTitle, mixNames, config.output_format);
+  } catch {
+    return false;
+  }
+}
+
 // ── Step 1: normalize ─────────────────────────────────────────────────────────
 // Classifies stems, normalises to a temp directory, and returns the result for
 // the mix step. Returns null and emits a skip event if output already exists.
