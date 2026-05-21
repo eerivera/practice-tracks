@@ -1,8 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
-import { type MixInput } from '../types.js';
-import { type AudioBackend, type NormalizeOptions } from './interface.js';
+import { type MixInput, type AudioBackend, type NormalizeOptions } from '../../common/types.js';
 
 const execFileAsync = promisify(execFile);
 

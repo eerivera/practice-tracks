@@ -1,4 +1,4 @@
-import type { AppConfig, QueueStatus, SongOutputs } from '../types.js';
+import type { Config, QueueStatus, SongOutputs } from '../types.js';
 
 export interface ProcessingApi {
   /** Upload zip files and begin processing. */
@@ -8,7 +8,7 @@ export interface ProcessingApi {
   getEventStream(sessionId: string): EventSource;
 
   /** Return the current default mix configuration (for the soundboard). */
-  getConfig(): Promise<AppConfig>;
+  getConfig(): Promise<Config>;
 
   /** Return the current queue state. */
   getStatus(): Promise<QueueStatus>;

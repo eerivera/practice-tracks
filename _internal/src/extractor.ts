@@ -2,7 +2,7 @@ import AdmZip from 'adm-zip';
 import { writeFileSync } from 'fs';
 import fs from 'fs';
 import path from 'path';
-import { consoleEmitter, type Emitter } from './events.js';
+import { consoleEmitter, type Emitter } from '../common/events.js';
 
 export interface SongMetadata {
   key?: string;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyStem, classifyStems } from '../src/stems/classifier.js';
+import { classifyStem, classifyStems } from '../common/stems/classifier.js';
 
 describe('classifyStem', () => {
   it('classifies "Click Track" as click', () => {

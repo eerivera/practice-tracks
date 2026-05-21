@@ -9,7 +9,7 @@ import { runPipeline } from './pipeline.js';
 import { extractMultitrackZip } from './extractor.js';
 import { loadConfig } from './config/loader.js';
 import { getMixQueue, getUploadQueue } from './queue.js';
-import { consoleEmitter, type Emitter, type ProgressEvent } from './events.js';
+import { consoleEmitter, type Emitter, type ProgressEvent } from '../common/events.js';
 import { loadEnv } from './env.js';
 
 loadEnv();

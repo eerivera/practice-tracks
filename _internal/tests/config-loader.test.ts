@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mergeConfig } from '../src/config/loader.js';
-import { type Config } from '../src/types.js';
+import { mergeConfig } from '../common/config/defaults.js';
+import { type Config } from '../common/types.js';
 
 const BASE: Config = {
   target_lufs: -14,

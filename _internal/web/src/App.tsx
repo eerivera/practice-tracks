@@ -5,14 +5,14 @@ import { ProgressFeed } from './components/ProgressFeed.js';
 import { Soundboard } from './components/Soundboard.js';
 import { OutputPanel } from './components/OutputPanel.js';
 import { PastMixes } from './components/PastMixes.js';
-import type { AppConfig, MixOutput, ProgressEvent, SongOutputs } from './types.js';
+import type { Config, MixOutput, ProgressEvent, SongOutputs } from './types.js';
 
 const api = createApi();
 
 type Phase = 'idle' | 'processing' | 'complete';
 
 export function App() {
-  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [config, setConfig] = useState<Config | null>(null);
   const [pastOutputs, setPastOutputs] = useState<SongOutputs[]>([]);
   const [phase, setPhase] = useState<Phase>('idle');
   const [events, setEvents] = useState<ProgressEvent[]>([]);

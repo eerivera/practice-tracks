@@ -1,6 +1,6 @@
 // Stub — will run the full pipeline in-browser via WASM when implemented.
 // Swap in by building with VITE_BACKEND=browser.
-import type { AppConfig, QueueStatus, SongOutputs } from '../types.js';
+import type { Config, QueueStatus, SongOutputs } from '../types.js';
 import type { ProcessingApi } from './interface.js';
 
 export class BrowserApi implements ProcessingApi {
@@ -12,7 +12,7 @@ export class BrowserApi implements ProcessingApi {
     throw new Error('Browser API not yet implemented');
   }
 
-  getConfig(): Promise<AppConfig> {
+  getConfig(): Promise<Config> {
     return Promise.reject(new Error('Browser API not yet implemented'));
   }
 
