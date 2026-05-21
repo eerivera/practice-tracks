@@ -69,7 +69,10 @@ export class BrowserWasmBackend {
     const outName = `mix_out_${id}.${format}`;
 
     for (let i = 0; i < inputs.length; i++) {
-      await ffmpeg.writeFile(inNames[i], inputs[i].data);
+      // slice() creates a fresh copy — writeFile transfers the underlying ArrayBuffer
+      // to the Worker (detaching it), so we must not pass the original directly or
+      // it will be unusable by subsequent mix calls for other variants.
+      await ffmpeg.writeFile(inNames[i], inputs[i].data.slice());
     }
 
     const args: string[] = [];
