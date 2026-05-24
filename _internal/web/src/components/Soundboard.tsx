@@ -144,15 +144,15 @@ function BusChannel({ name, displayGainDb, active, canExpand, expanded, onGainCh
       {canExpand ? (
         <button
           onClick={onToggleExpand}
-          className={`text-[9px] w-6 h-5 rounded transition-colors ${
+          className={`text-sm w-7 h-6 rounded transition-colors ${
             expanded ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
           }`}
           title={expanded ? 'Collapse' : 'Show individual stems'}
         >
-          {expanded ? '▴' : '▾'}
+          {expanded ? '▲' : '▼'}
         </button>
       ) : (
-        <div className="h-5" />
+        <div className="h-6" />
       )}
     </div>
   );
@@ -494,8 +494,10 @@ export function Soundboard({ config, onChange }: Props) {
 
       <p className="text-[11px] text-slate-600">
         {expandedBus
-          ? `${expandedBus.bus.name}: click fader to set offset · click label to exclude/include · M to mute · ▴ to collapse`
-          : 'Click fader to set group level · ▾ to show individual stems · Double-click preset to rename'}
+          ? `${expandedBus.bus.name}: click fader to set offset · click label to exclude/include · M to mute · ▲ to collapse`
+          : buses.length > 0
+            ? 'Click fader to set group level · ▼ to show individual stems · Double-click preset to rename'
+            : 'Click fader to set level · click label to exclude/include · M to mute · Double-click preset to rename'}
       </p>
     </div>
   );
