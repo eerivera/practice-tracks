@@ -29,6 +29,9 @@ export interface MixDefinition {
 }
 
 export interface Config {
+  // When false (the default), stems are mixed at their original recorded levels.
+  // When true, each stem is loudness-normalized to target_lufs before mixing.
+  normalize?: boolean;
   target_lufs: number;
   output_format: 'm4a' | 'mp3' | 'wav';
   // 0 or undefined → auto (backend.maxConcurrency, capped at 8 for native FFmpeg)

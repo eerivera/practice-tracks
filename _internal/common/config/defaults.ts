@@ -1,7 +1,8 @@
 import { type Config } from '../types.js';
 
 export const BUILT_IN_DEFAULTS: Config = {
-  target_lufs: -14,
+  normalize: false,
+  target_lufs: -23,
   output_format: 'm4a',
   track_rules: {
     click: { gain_db: -10 },
