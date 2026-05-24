@@ -28,10 +28,12 @@ export interface PipelineResult {
 
 // Holds normalization output between the normalize and mix steps.
 // The server stores this between HTTP requests; runPipeline uses it internally.
+// tmpDir is undefined when normalization was skipped (config.normalize: false) —
+// in that case normalizedStems point to the original stem paths.
 export interface NormalizeResult {
   songDir: string;
   outputDir: string;
-  tmpDir: string;
+  tmpDir?: string;
   normalizedStems: ClassifiedStem[];
   config: Config;
   backend: AudioBackend;
@@ -104,13 +106,17 @@ export function hasExistingOutput(songDir: string): boolean {
 export async function runNormalize(
   songDir: string,
   force: boolean,
-  emit: Emitter = consoleEmitter
+  emit: Emitter = consoleEmitter,
+  baseConfig?: Config
 ): Promise<NormalizeResult | null> {
   const stemsDir = findStemsDir(songDir);
   const meta = parseSongMetadata(path.basename(songDir));
   const subdir = formatOutputSubdir(meta);
   const outputDir = path.join(songDir, 'output', ...(subdir ? [subdir] : []));
-  const config = loadConfig(songDir);
+  // When called from the web API, baseConfig carries the user's current in-memory
+  // config (always up to date). When called from the CLI, baseConfig is absent and
+  // we fall back to loadConfig which does the full 3-layer YAML merge.
+  const config = baseConfig ?? loadConfig(songDir);
   const songTitle = formatSongDisplayName(songDir);
   const mixNames = config.mixes.map((m) => m.name);
 
@@ -159,8 +165,15 @@ export async function runNormalize(
   });
 
   const backend = await createBackend(emit);
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-'));
   const pipelineStartMs = Date.now();
+
+  // When normalization is disabled, skip ffmpeg processing and use the original
+  // stem paths directly. tmpDir is left undefined so cleanup is skipped.
+  if (!config.normalize) {
+    return { songDir, outputDir, normalizedStems: stems, config, backend, pipelineStartMs };
+  }
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-'));
 
   const configured = config.normalization_concurrency ?? 0;
   const concurrency = Math.min(
@@ -251,6 +264,6 @@ export async function runPipeline(
   try {
     return await runMix(normalizeResult, emit);
   } finally {
-    fs.rmSync(normalizeResult.tmpDir, { recursive: true, force: true });
+    if (normalizeResult.tmpDir) fs.rmSync(normalizeResult.tmpDir, { recursive: true, force: true });
   }
 }

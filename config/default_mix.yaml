@@ -4,17 +4,27 @@
 # You can override any of these settings per-song by placing a mix.yaml
 # file in the song's folder (e.g. songs/My Song/mix.yaml).
 #
-# All gain values are in dB relative to the normalized stem level.
-# Positive numbers are louder; negative numbers are quieter.
+# All gain values are in dB. Positive numbers are louder; negative quieter.
 
-# Number of stems to normalize in parallel.
+# Whether to loudness-normalize each stem before mixing.
+# false (default) — stems are mixed at their original recorded levels.
+#   Use the gain values in track_rules to balance the stems manually.
+# true — each stem is normalized to target_lufs before mixing.
+#   Useful if your stems have wildly inconsistent recording levels.
+#   Note: normalizing many stems to the same LUFS target and then summing
+#   them will increase the overall level significantly. Lower target_lufs
+#   (e.g. -23) to leave headroom when mixing 10–20 stems simultaneously.
+normalize: false
+
+# Number of stems to normalize in parallel (only used when normalize: true).
 # 0 means auto — uses the number of CPU cores on the machine, up to 8.
 # Reduce to 2 or 4 if you see slowdowns on an older or lower-spec Mac.
 normalization_concurrency: 0
 
-# Target loudness for each stem before mixing.
-# -14 LUFS is the standard for streaming platforms (Spotify, Apple Music).
-target_lufs: -14
+# Target loudness per stem when normalize: true.
+# -23 LUFS leaves enough headroom for a full 20-stem mix without clipping.
+# (-14 LUFS is the streaming standard but clips badly with many stems summed.)
+target_lufs: -23
 
 # Format for generated mix files.
 # Options: m4a  mp3  wav

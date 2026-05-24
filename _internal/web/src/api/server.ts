@@ -10,16 +10,18 @@ export class ServerApi implements ProcessingApi {
     if (!res.ok) throw new Error(`Extract failed: ${res.statusText}`);
   }
 
-  async normalizeSongs(songDirs: string[], sessionId: string, force?: boolean): Promise<void> {
+  async normalizeSongs(songDirs: string[], sessionId: string, force: boolean, config: Config): Promise<void> {
     const res = await fetch('/api/normalize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, songDirs, force: force ?? false }),
+      body: JSON.stringify({ sessionId, songDirs, force, config }),
     });
     if (!res.ok) throw new Error(`Normalize failed: ${res.statusText}`);
   }
 
-  async mixSongs(sessionId: string): Promise<void> {
+  async mixSongs(sessionId: string, _config: Config): Promise<void> {
+    // config is carried through the server-side NormalizeResult from the prior
+    // /api/normalize call; nothing extra needs to be sent here.
     const res = await fetch('/api/mix', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
