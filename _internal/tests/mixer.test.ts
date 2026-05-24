@@ -91,4 +91,47 @@ describe('buildMixInputs', () => {
     });
     expect(inputs[0].gainDb).toBe(0);
   });
+
+  it('bus gain adds to track_rule offset', () => {
+    const configWithBus: Config = {
+      ...CONFIG,
+      buses: [{ name: 'Rhythm', gain_db: -3, contains: ['drums', 'bass'] }],
+    };
+    const inputs = buildMixInputs(STEMS, { name: 'full' }, configWithBus);
+    // drums: bus -3 + track_rule 0 = -3
+    const drums = inputs.find((i) => i.path === '/tmp/drums.wav');
+    expect(drums?.gainDb).toBe(-3);
+    // bass: bus -3 + track_rule 0 = -3
+    const bass = inputs.find((i) => i.path === '/tmp/bass.wav');
+    expect(bass?.gainDb).toBe(-3);
+    // click: not in any bus → bus gain 0, track_rule -10 = -10 (unchanged)
+    const click = inputs.find((i) => i.path === '/tmp/click.wav');
+    expect(click?.gainDb).toBe(-10);
+  });
+
+  it('mix override is an offset from bus (bus gain + override = effective)', () => {
+    const configWithBus: Config = {
+      ...CONFIG,
+      buses: [{ name: 'Vocals', gain_db: 2, contains: ['guide'] }],
+    };
+    // Override sets guide offset to 4; bus is +2 → effective = 6
+    const inputs = buildMixInputs(
+      STEMS,
+      { name: 'louder-guide', overrides: { guide: { gain_db: 4 } } },
+      configWithBus
+    );
+    const guide = inputs.find((i) => i.path === '/tmp/guide.wav');
+    expect(guide?.gainDb).toBe(6);
+  });
+
+  it('categories not assigned to any bus get bus gain 0', () => {
+    const configWithBus: Config = {
+      ...CONFIG,
+      buses: [{ name: 'Bass', gain_db: -6, contains: ['bass'] }],
+    };
+    // guide is not in any bus → bus gain = 0, track_rule = 2 → effective = 2
+    const inputs = buildMixInputs(STEMS, { name: 'full' }, configWithBus);
+    const guide = inputs.find((i) => i.path === '/tmp/guide.wav');
+    expect(guide?.gainDb).toBe(2);
+  });
 });

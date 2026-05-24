@@ -7,6 +7,15 @@ export const DEFAULT_CONFIG: Config = {
   normalization_concurrency: 0,
   target_lufs: -23,
   output_format: 'm4a',
+  buses: [
+    { name: 'Click',        gain_db: 0, contains: ['click'] },
+    { name: 'Drums & Perc', gain_db: 0, contains: ['drums', 'percussion'] },
+    { name: 'Bass',         gain_db: 0, contains: ['bass', 'synth_bass'] },
+    { name: 'Keys',         gain_db: 0, contains: ['keys', 'piano', 'organ'] },
+    { name: 'Guitar',       gain_db: 0, contains: ['electric_guitar', 'acoustic_guitar'] },
+    { name: 'Vocals',       gain_db: 0, contains: ['guide', 'lead_vocals', 'bgvs', 'choir'] },
+    { name: 'FX',           gain_db: 0, contains: ['fx', 'vox_fx'] },
+  ],
   track_rules: {
     click:           { gain_db: -10 },
     guide:           { gain_db:   2 },

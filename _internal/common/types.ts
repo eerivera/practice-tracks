@@ -22,6 +22,12 @@ export interface StemRule {
   mute?: boolean;
 }
 
+export interface BusDefinition {
+  name: string;
+  gain_db: number;
+  contains: StemCategory[];
+}
+
 export interface MixDefinition {
   name: string;
   exclude?: StemCategory[];
@@ -37,6 +43,9 @@ export interface Config {
   output_format: 'm4a' | 'mp3' | 'wav';
   // 0 or undefined → auto (backend.maxConcurrency, capped at 8 for native FFmpeg)
   normalization_concurrency?: number;
+  // Optional bus groups. When present, effective gain = bus.gain_db + track_rule.gain_db.
+  // When absent (or a category isn't in any bus), bus gain is treated as 0.
+  buses?: BusDefinition[];
   track_rules: Partial<Record<StemCategory, StemRule>>;
   mixes: MixDefinition[];
 }

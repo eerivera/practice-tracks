@@ -1,4 +1,10 @@
-import { type Config, type ClassifiedStem, type MixDefinition, type MixInput } from './types.js';
+import { type Config, type ClassifiedStem, type MixDefinition, type MixInput, type StemCategory } from './types.js';
+
+/** Returns the bus gain for a category, or 0 if the category is not in any bus. */
+function getBusGain(config: Config, category: StemCategory): number {
+  if (!config.buses) return 0;
+  return config.buses.find((b) => b.contains.includes(category))?.gain_db ?? 0;
+}
 
 export function buildMixInputs(
   stems: ClassifiedStem[],
@@ -10,9 +16,12 @@ export function buildMixInputs(
   return filtered.map((stem) => {
     const baseRule = config.track_rules[stem.category] ?? { gain_db: 0 };
     const override = mixDef.overrides?.[stem.category];
-    const gainDb = override?.gain_db ?? baseRule.gain_db;
+    // offset = mix override if present, else the category's track_rule.
+    // With buses, this is always an offset relative to the bus level.
+    const offset = override?.gain_db ?? baseRule.gain_db;
+    const busGain = getBusGain(config, stem.category);
     const muted = override?.mute ?? baseRule.mute ?? false;
-    return { path: stem.path, gainDb: muted ? -120 : gainDb };
+    return { path: stem.path, gainDb: muted ? -120 : busGain + offset };
   });
 }
 
