@@ -57,6 +57,9 @@ track_rules:
   piano:
     gain_db: -3
 
+  organ:
+    gain_db: -3
+
   electric_guitar:
     gain_db: -4
 

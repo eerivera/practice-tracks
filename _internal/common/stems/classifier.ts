@@ -14,6 +14,7 @@ const STEM_PATTERNS: [RegExp, StemCategory][] = [
   [/\bbgvs?\b/i, 'bgvs'],
   [/\bkeys?\b/i, 'keys'],
   [/\bpiano\b/i, 'piano'],
+  [/\borgan\b/i, 'organ'],
   [/\beg\b/i, 'electric_guitar'],
   [/\bag\b/i, 'acoustic_guitar'],
   [/\bfx\b/i, 'fx'],

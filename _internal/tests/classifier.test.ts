@@ -70,6 +70,16 @@ describe('classifyStem', () => {
     expect(result.index).toBeUndefined();
   });
 
+  it('classifies "Organ" as organ', () => {
+    expect(classifyStem('/path/Organ.m4a').category).toBe('organ');
+  });
+
+  it('classifies "Organ 2" as organ with index 2', () => {
+    const result = classifyStem('/path/Organ 2.m4a');
+    expect(result.category).toBe('organ');
+    expect(result.index).toBe(2);
+  });
+
   it('classifies unknown stems as unknown', () => {
     expect(classifyStem('/path/Ambience.m4a').category).toBe('unknown');
   });

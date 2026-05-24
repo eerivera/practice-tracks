@@ -7,6 +7,7 @@ export type StemCategory =
   | 'synth_bass'
   | 'keys'
   | 'piano'
+  | 'organ'
   | 'electric_guitar'
   | 'acoustic_guitar'
   | 'bgvs'

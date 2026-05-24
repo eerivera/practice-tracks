@@ -16,6 +16,7 @@ export const DEFAULT_CONFIG: Config = {
     synth_bass:      { gain_db:  -2 },
     keys:            { gain_db:  -3 },
     piano:           { gain_db:  -3 },
+    organ:           { gain_db:  -3 },
     electric_guitar: { gain_db:  -4 },
     acoustic_guitar: { gain_db:  -4 },
     bgvs:            { gain_db:  -6 },
