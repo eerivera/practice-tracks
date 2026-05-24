@@ -106,13 +106,17 @@ export function hasExistingOutput(songDir: string): boolean {
 export async function runNormalize(
   songDir: string,
   force: boolean,
-  emit: Emitter = consoleEmitter
+  emit: Emitter = consoleEmitter,
+  baseConfig?: Config
 ): Promise<NormalizeResult | null> {
   const stemsDir = findStemsDir(songDir);
   const meta = parseSongMetadata(path.basename(songDir));
   const subdir = formatOutputSubdir(meta);
   const outputDir = path.join(songDir, 'output', ...(subdir ? [subdir] : []));
-  const config = loadConfig(songDir);
+  // When called from the web API, baseConfig carries the user's current in-memory
+  // config (always up to date). When called from the CLI, baseConfig is absent and
+  // we fall back to loadConfig which does the full 3-layer YAML merge.
+  const config = baseConfig ?? loadConfig(songDir);
   const songTitle = formatSongDisplayName(songDir);
   const mixNames = config.mixes.map((m) => m.name);
 

@@ -109,12 +109,11 @@ export class BrowserApi implements ProcessingApi {
 
   // ── Step 2: normalize ────────────────────────────────────────────────────────
 
-  async normalizeSongs(songDirs: string[], sessionId: string, _force = false): Promise<void> {
+  async normalizeSongs(songDirs: string[], sessionId: string, _force: boolean, config: Config): Promise<void> {
     const es = this.es(sessionId);
     const session = this.sessions.get(sessionId);
     if (!session) { es?.dispatch({ type: 'error', message: 'Session not found' }); return; }
 
-    const config: Config = await this.getConfig();
     const songs = session.songs.filter((s) => songDirs.includes(s.songDir));
 
     // When normalization is disabled, pass raw stem data straight to the mix step.
@@ -150,12 +149,10 @@ export class BrowserApi implements ProcessingApi {
 
   // ── Step 3: mix ──────────────────────────────────────────────────────────────
 
-  async mixSongs(sessionId: string): Promise<void> {
+  async mixSongs(sessionId: string, config: Config): Promise<void> {
     const es = this.es(sessionId);
     const session = this.sessions.get(sessionId);
     if (!session) { es?.dispatch({ type: 'error', message: 'Session not found' }); return; }
-
-    const config: Config = await this.getConfig();
     es?.dispatch({ type: 'mix_start', total: session.songs.length * config.mixes.length });
 
     for (const song of session.songs) {

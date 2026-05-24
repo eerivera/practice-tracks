@@ -5,10 +5,10 @@ export interface ProcessingApi {
   extractZips(files: File[], sessionId: string): Promise<void>;
 
   /** Step 2: normalise stems for previously extracted song directories. */
-  normalizeSongs(songDirs: string[], sessionId: string, force?: boolean): Promise<void>;
+  normalizeSongs(songDirs: string[], sessionId: string, force: boolean, config: Config): Promise<void>;
 
   /** Step 3: mix from the normalised stems held by a prior normalizeSongs call. */
-  mixSongs(sessionId: string): Promise<void>;
+  mixSongs(sessionId: string, config: Config): Promise<void>;
 
   /** Open an SSE stream for the given session. */
   getEventStream(sessionId: string): EventSource;

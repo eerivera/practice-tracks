@@ -6,6 +6,7 @@ import os from 'os';
 import open from 'open';
 import { zipSync } from 'fflate';
 import { runNormalize, runMix, hasExistingOutput, type NormalizeResult } from './pipeline.js';
+import type { Config } from '../common/types.js';
 import { extractMultitrackZip } from './extractor.js';
 import { loadBaseConfig, saveBaseConfig, resetBaseConfig } from './config/loader.js';
 import { getMixQueue, getUploadQueue } from './queue.js';
@@ -135,10 +136,11 @@ app.post(
 // If called again with the same sessionId (e.g. force reprocess), existing
 // tmpDirs are cleaned up first.
 app.post('/api/normalize', async (req: Request, res: Response) => {
-  const { sessionId, songDirs, force: forceRaw } = req.body as {
+  const { sessionId, songDirs, force: forceRaw, config: baseConfig } = req.body as {
     sessionId: string;
     songDirs: string[];
     force?: boolean;
+    config?: Config;
   };
   const force = forceRaw === true;
 
@@ -165,7 +167,7 @@ app.post('/api/normalize', async (req: Request, res: Response) => {
 
   for (const songDir of songDirs) {
     try {
-      const result = await runNormalize(songDir, force, emit);
+      const result = await runNormalize(songDir, force, emit, baseConfig);
       if (result) results.push(result);
     } catch (err) {
       emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });

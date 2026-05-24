@@ -116,12 +116,8 @@ export function App() {
     setPhase('files_selected');
   }
 
-  async function handleExtract() {
+  function handleExtract() {
     if (!filesRef.current) return;
-    // Persist any unsaved config changes before the pipeline starts so they
-    // take effect in this session (server reads from disk; browser reads localStorage).
-    if (config) await api.saveConfig(config).catch(console.error);
-    setConfigDirty(false);
     setEvents([]);
     setSongDirs([]);
     setExistingOutputCount(0);
@@ -149,14 +145,14 @@ export function App() {
   }
 
   function handleNormalize(force = false) {
-    if (!songDirs.length) return;
+    if (!songDirs.length || !config) return;
     setSkippedCount(0);
     setShowForceModal(false);
     setPhase('normalizing');
 
     // When normalization is off the prepare step is instant; skip straight to
     // mixing so the user never sees an intermediate "normalized" screen.
-    const skipToMix = !config?.normalize;
+    const skipToMix = !config.normalize;
 
     let skips = 0;
     openSse(
@@ -173,12 +169,13 @@ export function App() {
         }
       }
     );
-    api.normalizeSongs(songDirs, sessionIdRef.current, force).catch((err: unknown) => {
+    api.normalizeSongs(songDirs, sessionIdRef.current, force, config).catch((err: unknown) => {
       setEvents((prev) => [...prev, { type: 'error', message: err instanceof Error ? err.message : String(err) }]);
     });
   }
 
   function handleMix() {
+    if (!config) return;
     setPhase('mixing');
     openSse(
       () => { /* events already appended */ },
@@ -187,7 +184,7 @@ export function App() {
         api.getOutputs().then(setPastOutputs).catch(console.error);
       }
     );
-    api.mixSongs(sessionIdRef.current).catch((err: unknown) => {
+    api.mixSongs(sessionIdRef.current, config).catch((err: unknown) => {
       setEvents((prev) => [...prev, { type: 'error', message: err instanceof Error ? err.message : String(err) }]);
     });
   }
@@ -261,7 +258,7 @@ export function App() {
             </p>
             <div className="flex gap-3">
               <button
-                onClick={() => { void handleExtract(); }}
+                onClick={handleExtract}
                 className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
               >
                 Extract Stems
