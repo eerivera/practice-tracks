@@ -28,10 +28,12 @@ export interface PipelineResult {
 
 // Holds normalization output between the normalize and mix steps.
 // The server stores this between HTTP requests; runPipeline uses it internally.
+// tmpDir is undefined when normalization was skipped (config.normalize: false) —
+// in that case normalizedStems point to the original stem paths.
 export interface NormalizeResult {
   songDir: string;
   outputDir: string;
-  tmpDir: string;
+  tmpDir?: string;
   normalizedStems: ClassifiedStem[];
   config: Config;
   backend: AudioBackend;
@@ -159,8 +161,15 @@ export async function runNormalize(
   });
 
   const backend = await createBackend(emit);
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-'));
   const pipelineStartMs = Date.now();
+
+  // When normalization is disabled, skip ffmpeg processing and use the original
+  // stem paths directly. tmpDir is left undefined so cleanup is skipped.
+  if (!config.normalize) {
+    return { songDir, outputDir, normalizedStems: stems, config, backend, pipelineStartMs };
+  }
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-'));
 
   const configured = config.normalization_concurrency ?? 0;
   const concurrency = Math.min(
@@ -251,6 +260,6 @@ export async function runPipeline(
   try {
     return await runMix(normalizeResult, emit);
   } finally {
-    fs.rmSync(normalizeResult.tmpDir, { recursive: true, force: true });
+    if (normalizeResult.tmpDir) fs.rmSync(normalizeResult.tmpDir, { recursive: true, force: true });
   }
 }

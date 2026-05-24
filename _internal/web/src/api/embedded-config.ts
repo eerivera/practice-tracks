@@ -3,8 +3,9 @@ import type { Config } from '../types.js';
 // Mirror of config/default_mix.yaml, bundled for the browser build where there
 // is no filesystem to load YAML from at runtime.
 export const DEFAULT_CONFIG: Config = {
+  normalize: false,
   normalization_concurrency: 0,
-  target_lufs: -14,
+  target_lufs: -23,
   output_format: 'm4a',
   track_rules: {
     click:           { gain_db: -10 },

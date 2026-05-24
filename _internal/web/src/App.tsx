@@ -154,10 +154,24 @@ export function App() {
     setShowForceModal(false);
     setPhase('normalizing');
 
+    // When normalization is off the prepare step is instant; skip straight to
+    // mixing so the user never sees an intermediate "normalized" screen.
+    const skipToMix = !config?.normalize;
+
     let skips = 0;
     openSse(
       (event) => { if (event.type === 'skip') skips++; },
-      () => { setSkippedCount(skips); setPhase('normalized'); if (skips > 0) setShowForceModal(true); }
+      () => {
+        setSkippedCount(skips);
+        if (skips > 0) {
+          setPhase('normalized');
+          setShowForceModal(true);
+        } else if (skipToMix) {
+          handleMix();
+        } else {
+          setPhase('normalized');
+        }
+      }
     );
     api.normalizeSongs(songDirs, sessionIdRef.current, force).catch((err: unknown) => {
       setEvents((prev) => [...prev, { type: 'error', message: err instanceof Error ? err.message : String(err) }]);
@@ -266,10 +280,12 @@ export function App() {
 
         {phase === 'extracted' && (
           <div className="space-y-3">
-            <div className="flex items-start gap-2 px-3 py-2.5 bg-slate-800 rounded-lg text-sm text-slate-400">
-              <span className="mt-px shrink-0">ℹ</span>
-              <span>Stems must be re-normalized each session — caching is coming soon.</span>
-            </div>
+            {config?.normalize && (
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-slate-800 rounded-lg text-sm text-slate-400">
+                <span className="mt-px shrink-0">ℹ</span>
+                <span>Stems must be re-normalized each session — caching is coming soon.</span>
+              </div>
+            )}
 
             {existingOutputCount > 0 ? (
               <>
@@ -297,7 +313,7 @@ export function App() {
                 onClick={() => { handleNormalize(); }}
                 className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
               >
-                Normalize / Convert
+                {config?.normalize ? 'Normalize Stems' : 'Mix Practice Tracks'}
               </button>
             )}
           </div>
@@ -319,6 +335,44 @@ export function App() {
           >
             Process More Files
           </button>
+        )}
+
+        {/* Normalization settings — above the mix panel since it runs first */}
+        {config && (
+          <div className="flex items-center gap-3">
+            <label
+              className="flex items-center gap-1.5 text-xs text-slate-400 select-none cursor-pointer"
+              title="When on, each stem is loudness-normalized before mixing. Off by default — use the gain faders to balance stems manually."
+            >
+              <input
+                type="checkbox"
+                className="accent-indigo-500"
+                checked={config.normalize ?? false}
+                onChange={(e) => { handleConfigChange({ ...config, normalize: e.target.checked }); }}
+              />
+              Normalize stems
+            </label>
+            {config.normalize && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                <span>Target:</span>
+                <input
+                  type="number"
+                  min={-40}
+                  max={0}
+                  step={1}
+                  value={config.target_lufs}
+                  onChange={(e) => {
+                    const n = parseFloat(e.target.value);
+                    if (!isNaN(n)) {
+                      handleConfigChange({ ...config, target_lufs: Math.max(-40, Math.min(0, Math.round(n))) });
+                    }
+                  }}
+                  className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                />
+                <span>LUFS</span>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Mix presets — always visible once config is loaded; dimmed while mixing */}
@@ -343,14 +397,14 @@ export function App() {
                   className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
                   title="Upload a saved config file"
                 >
-                  Upload
+                  Upload config
                 </button>
                 <button
                   onClick={handleDownloadConfig}
                   className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
                   title="Download current config as YAML"
                 >
-                  Download
+                  Download config
                 </button>
                 <button
                   onClick={() => { void handleResetConfig(); }}

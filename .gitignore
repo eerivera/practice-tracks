@@ -28,3 +28,4 @@ config/user_mix.yaml
 .env.*
 !.env.example
 .claude/settings.local.json
+

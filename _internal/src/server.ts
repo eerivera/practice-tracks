@@ -39,7 +39,9 @@ const normalizedResults = new Map<string, NormalizeResult[]>();
 
 function cleanupNormalized(sessionId: string): void {
   const results = normalizedResults.get(sessionId) ?? [];
-  for (const r of results) fs.rmSync(r.tmpDir, { recursive: true, force: true });
+  for (const r of results) {
+    if (r.tmpDir) fs.rmSync(r.tmpDir, { recursive: true, force: true });
+  }
   normalizedResults.delete(sessionId);
 }
 
