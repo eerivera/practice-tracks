@@ -35,26 +35,48 @@ output_format: m4a
 # How the two-level gain model works:
 #   effective gain = bus gain_db + stem gain_db (from track_rules below)
 #
-# This is empty by default because each category in track_rules already acts
-# as a group for any numbered stems it contains — for example:
-#   electric_guitar controls EG 1, EG 2, and EG 3 simultaneously
-#   keys            controls Keys 1, Keys 2, Keys 3, Keys 4, and Keys 5
-#   piano           controls Piano and Piano 2
+# All buses start at 0 dB so the track_rules values below are the same as
+# before — you can think of the bus fader as a way to shift an entire group
+# up or down without touching every individual stem.
 #
-# To create a cross-category group (e.g. a "Rhythm" fader that controls both
-# drums and bass together), add a bus entry here:
+# Note on numbered stems (EG 1/2/3, Keys 1–5, Piano/Piano 2):
+#   These all get classified into a single category (electric_guitar, keys,
+#   piano) by the stem classifier, so they share one fader within their bus.
+#   There is currently no per-stem sub-fader for individual numbered instances.
 #
-#   buses:
-#     - name: Rhythm
-#       gain_db: 0
-#       contains: [drums, percussion, bass, synth_bass]
-#
-# Category names must match the classifier (see track_rules below).
-buses: []
+# To add or remove groups: edit the blocks below. Category names must match
+# the classifier (see track_rules).
+buses:
+  - name: Click
+    gain_db: 0
+    contains: [click]
 
-# Per-stem gain values. Each value is also the effective gain unless a bus
-# is defined above — with a bus, effective gain = bus gain_db + stem gain_db.
-# (Stems not listed here get 0 dB.)
+  - name: Drums & Perc
+    gain_db: 0
+    contains: [drums, percussion]
+
+  - name: Bass
+    gain_db: 0
+    contains: [bass, synth_bass]
+
+  - name: Keys
+    gain_db: 0
+    contains: [keys, piano, organ]
+
+  - name: Guitar
+    gain_db: 0
+    contains: [electric_guitar, acoustic_guitar]
+
+  - name: Vocals
+    gain_db: 0
+    contains: [guide, lead_vocals, bgvs, choir]
+
+  - name: FX
+    gain_db: 0
+    contains: [fx, vox_fx]
+
+# Per-stem gain offsets, relative to the bus level above.
+# (Stems not listed here, or not assigned to a bus, get 0 dB.)
 track_rules:
   click:
     gain_db: -10      # Click is kept quiet so it doesn't dominate

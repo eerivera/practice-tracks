@@ -4,9 +4,7 @@ export const BUILT_IN_DEFAULTS: Config = {
   normalize: false,
   target_lufs: -23,
   output_format: 'm4a',
-  // No buses by default — each category in track_rules is its own channel.
-  // Numbered stems (EG 1/2/3, Keys 1–5, Piano/Piano 2) are all controlled
-  // by their single category fader. Add buses here to group categories together.
+  // No buses by default — per-song and default_mix.yaml configs supply them.
   buses: [],
   track_rules: {
     click: { gain_db: -10 },
