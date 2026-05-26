@@ -114,7 +114,7 @@ If you only want one specific song to be re-mixed on the next `run` without forc
 ```
 npm run mix -- status                          # see what's been processed and what's waiting
 npm run mix -- process "queue-zips/Song.zip"   # extract + mix one song in one step
-npm run mix -- list-stems "songs/Song Name"    # preview how stems are classified, without mixing
+npm run mix -- list-stems "songs/Song Name"    # show which bus each stem is assigned to
 npm run mix -- run --archive                   # save previous mixes before overwriting them
 ```
 
@@ -122,16 +122,27 @@ npm run mix -- run --archive                   # save previous mixes before over
 
 ## Adjusting the Mix
 
-Open `config/default_mix.yaml` in any text editor to change the volume of each instrument type. Numbers are in dB — negative is quieter, positive is louder.
+Open `config/default_mix.yaml` in any text editor to adjust instrument levels. Stems are grouped into **buses** — for example, `EG` groups all electric guitar tracks, `Keys` groups keyboard tracks, `Guide` is the guide vocal. Numbers are in dB — negative is quieter, positive is louder.
 
-To tweak just one song without changing the defaults, create a `mix.yaml` file inside that song's folder with only the values you want to change:
+To change a bus level across all mixes, edit its `gain_db`:
 
 ```yaml
-# songs/My Song/mix.yaml
-track_rules:
-  guide:
-    gain_db: 5    # guide is quiet on this recording, lift it a bit
+buses:
+  - name: Guide
+    gain_db: 3    # lift the guide vocal by 3 dB in every mix
+    contains: [Guide*]
 ```
+
+To adjust a bus for one specific mix only, add a `bus_gains` entry to that mix:
+
+```yaml
+mixes:
+  - name: vocalist
+    bus_gains:
+      Guide: 5    # +5 dB on top of the bus level, only in the vocalist mix
+```
+
+To tweak just one song without changing the defaults, create a `mix.yaml` file inside that song's folder using the same format.
 
 ### If mixing feels slow
 
@@ -145,7 +156,7 @@ The tool processes multiple stems at once automatically. If it seems sluggish on
 
 **"No stems directory found"** — run `extract` or `process` on the zip first.
 
-**A stem shows as `unknown`** — the tool didn't recognise the filename. Rename the file to something it knows (e.g. `Gtr.m4a` → `EG.m4a`), or contact your maintainer to add it.
+**A warning about an unmatched stem** — the filename didn't match any bus pattern in the config. The stem is still included at its original volume. Contact your maintainer to add a matching pattern, or rename the file to match an existing bus (e.g. `Gtr.m4a` → `EG.m4a`).
 
 **The mixes sound unbalanced** — adjust the `gain_db` values in `config/default_mix.yaml`. Each step of 3 dB is roughly twice as loud or half as quiet.
 

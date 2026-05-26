@@ -15,9 +15,9 @@ Primary workflow: drop zips in `queue-zips/` → `npm run mix -- run` → mixes 
 ## Stack
 
 - **Language:** TypeScript strict, ESM, `NodeNext` module resolution (`.js` extensions in imports)
-- **Runtime:** Node.js ≥ 18 local; browser target for future web build
+- **Runtime:** Node.js ≥ 18 local; browser build live (deployed to GitHub Pages via WASM backend)
 - **Audio:** `NativeFFmpegBackend` (system ffmpeg) or `WasmFFmpegBackend` (@ffmpeg/ffmpeg), auto-detected
-- **Config:** YAML 3-layer merge: built-in defaults → `config/default_mix.yaml` → `songs/<name>/mix.yaml`
+- **Config:** YAML 3-layer merge: built-in defaults → `config/default_mix.yaml` → `songs/<name>/mix.yaml`. Schema: `buses[].contains` patterns, per-mix `bus_gains` + `stem_gains`, global `stem_gains`. No `track_rules`.
 - **Tooling:** `tsx` dev, `vitest` tests, `typescript-eslint`, `npm run check` = type-check + lint + test
 
 ---
@@ -69,7 +69,7 @@ config/          ← default_mix.yaml
 
 ## Stem Naming Reference (Who Else - Crowns Down Live zip)
 
-AG, Bass, BGVS, Choir, Click Track, Drums (Live), EG 1/2/3, FX, Guide, Keys 1-5, Perc, Piano, Piano 2, Synth Bass, Vox FX — all covered by classifier patterns and tested.
+AG, Bass, BGVS, Choir, Click Track, Drums (Live), EG 1/2/3, FX, Guide, Keys 1-5, Perc, Piano, Piano 2, Synth Bass, Vox FX — all matched by bus patterns in `config/default_mix.yaml` and `embedded-config.ts`. Mixer tests cover pattern matching.
 
 ---
 

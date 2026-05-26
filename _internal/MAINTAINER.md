@@ -21,15 +21,13 @@ src/
 ├── types.ts          Shared TypeScript types
 ├── cli.ts            CLI entry point — all commands
 ├── pipeline.ts       Orchestration: normalize → mix → write output
-├── mixer.ts          Pure gain routing logic (no I/O)
+├── mixer.ts          Pure gain routing: stemMatchesPattern, findStemBus, buildMixInputs (shared with browser)
 ├── extractor.ts      Zip extraction + key/bpm metadata parsing
 ├── queue.ts          Queue state read/write (to-mix.json, to-upload.json)
 ├── pco.ts            Planning Center API client (upload stubbed — needs PAT)
 ├── env.ts            .env loader + PCO credential helper
 ├── config/
 │   └── loader.ts     YAML config loading + 3-layer merge
-├── stems/
-│   └── classifier.ts Regex stem → StemCategory mapping
 └── backend/
     ├── interface.ts  AudioBackend interface
     ├── native.ts     NativeFFmpegBackend (system ffmpeg)
@@ -189,13 +187,25 @@ Invalidate on stem file mtime or content hash. Not in V1.
 
 ---
 
-## Stem Classification
+## Bus Routing
 
-Regex patterns in `src/stems/classifier.ts`. **Order is load-bearing:**
-- `synth_bass` before `bass`
-- `vox_fx` before `fx`
+Stems are assigned to buses by matching filenames against `BusDefinition.contains` patterns. No classifier — routing is entirely config-driven (`common/mixer.ts`).
 
-To add a new stem type: update `StemCategory` in `types.ts`, add pattern to `STEM_PATTERNS`, add default rule to `BUILT_IN_DEFAULTS` in `config/loader.ts`, add to `config/default_mix.yaml`, add test.
+**Pattern rules (`stemMatchesPattern`):**
+- Patterns ending in `*` → case-insensitive prefix match (`EG*` matches EG 1, EG 2, EG 3)
+- Patterns without `*` → case-insensitive exact match
+- First matching bus wins — order of buses in the config is the tie-breaker
+
+**Effective gain formula per stem per mix:**
+```
+effectiveDb = bus.gain_db
+            + (mix.bus_gains[busName] ?? 0)
+            + (mix.stem_gains[filename] ?? config.stem_gains[filename] ?? 0)
+```
+
+Stems that match no bus are included at 0 dB with a console warning.
+
+**To add or change a bus:** edit `buses:` in `config/default_mix.yaml` **and** the matching entry in `_internal/web/src/api/embedded-config.ts` (the browser build's bundled config mirror — these must stay in sync). Add a test in `_internal/tests/mixer.test.ts`.
 
 ---
 
@@ -214,24 +224,24 @@ Both open at `http://localhost:3000`. `web:dev` uses Vite's dev server on port 5
 
 ```
 _internal/
-  src/server.ts          Express server (SSE streaming, upload, download, config endpoints)
+  src/server.ts          Express server (SSE, upload, download, config + GET /api/songs + GET /api/stems/:dir)
   web/
     src/
-      types.ts           Mirror of server-side ProgressEvent + AppConfig, QueueStatus, MixOutput
+      types.ts           Web-only types: MixOutput, SongOutputs, QueueStatus (common types re-exported from @common)
       api/
-        interface.ts     ProcessingApi interface
+        interface.ts     ProcessingApi interface (includes listSongs, getStems)
         server.ts        ServerApi — fetch + EventSource (default)
         browser.ts       BrowserApi — full in-browser WASM pipeline (no server)
         browser-backend.ts  BrowserWasmBackend — @ffmpeg/ffmpeg with Uint8Array I/O
-        embedded-config.ts  Default config bundled for browser build (mirrors default_mix.yaml)
+        embedded-config.ts  Default config bundled for browser build (must mirror default_mix.yaml)
         fake-event-source.ts  Mock EventSource for browser-mode progress events
         factory.ts       Selects impl via VITE_BACKEND build flag
       components/
         DropZone.tsx      Drag-and-drop + click-to-browse .zip picker
         ProgressFeed.tsx  SSE log + normalize progress bar
-        Soundboard.tsx    Read-only per-mix faders showing config gains
+        Soundboard.tsx    Bus + per-stem faders; buses expand to show sub-faders for multi-stem buses
         OutputPanel.tsx   Download buttons for generated mix files
-      App.tsx             State machine: idle → processing → complete
+      App.tsx             State machine + song selector; global config controls above mixer
     vite.config.ts
     tailwind.config.js
     postcss.config.js     Must specify explicit tailwindcss config path (PostCSS resolves from CWD, not Vite root)
