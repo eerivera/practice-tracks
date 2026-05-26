@@ -439,7 +439,7 @@ export function App() {
                       className={`text-[11px] ${normalizeCache.target_lufs === config.target_lufs ? 'text-emerald-500' : 'text-slate-500'}`}
                       title={`Stems for this song were last normalized at ${normalizeCache.target_lufs} LUFS`}
                     >
-                      cached: {normalizeCache.target_lufs} LUFS
+                      Cached: {normalizeCache.target_lufs} LUFS
                     </span>
                   )}
                 </div>
