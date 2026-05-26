@@ -1,38 +1,43 @@
-import { type Config, type ClassifiedStem, type MixDefinition, type MixInput, type StemCategory } from './types.js';
+import { type Config, type StemFile, type BusDefinition, type MixDefinition, type MixInput } from './types.js';
 
-/** Returns the bus gain for a category, or 0 if the category is not in any bus. */
-function getBusGain(config: Config, category: StemCategory): number {
-  if (!config.buses) return 0;
-  return config.buses.find((b) => b.contains.includes(category))?.gain_db ?? 0;
+// Returns true if `filename` matches a bus contains entry.
+// Entries ending with '*' are prefix patterns (case-insensitive).
+// All other entries are exact matches (case-insensitive).
+export function stemMatchesPattern(filename: string, pattern: string): boolean {
+  const f = filename.toLowerCase();
+  const p = pattern.toLowerCase();
+  return p.endsWith('*') ? f.startsWith(p.slice(0, -1)) : f === p;
+}
+
+// Finds the first bus whose contains list matches the given filename.
+export function findStemBus(buses: BusDefinition[], filename: string): BusDefinition | undefined {
+  return buses.find((b) => b.contains.some((pat) => stemMatchesPattern(filename, pat)));
 }
 
 export function buildMixInputs(
-  stems: ClassifiedStem[],
+  stems: StemFile[],
   mixDef: MixDefinition,
   config: Config
 ): MixInput[] {
-  const filtered = filterStems(stems, mixDef);
+  return stems.flatMap((stem) => {
+    const bus = findStemBus(config.buses, stem.filename);
+    const busName = bus?.name;
 
-  return filtered.map((stem) => {
-    const baseRule = config.track_rules[stem.category] ?? { gain_db: 0 };
-    const override = mixDef.overrides?.[stem.category];
-    // offset = mix override if present, else the category's track_rule.
-    // With buses, this is always an offset relative to the bus level.
-    const offset = override?.gain_db ?? baseRule.gain_db;
-    const busGain = getBusGain(config, stem.category);
-    const muted = override?.mute ?? baseRule.mute ?? false;
-    return { path: stem.path, gainDb: muted ? -120 : busGain + offset };
+    // include_only / exclude operate on bus names.
+    if (mixDef.include_only) {
+      if (!busName || !mixDef.include_only.includes(busName)) return [];
+    }
+    if (mixDef.exclude && busName && mixDef.exclude.includes(busName)) return [];
+
+    // Effective gain = base bus gain + per-mix bus offset + per-mix stem offset
+    // (falling back to global stem_gains, then 0).
+    const baseBusGain = bus?.gain_db ?? 0;
+    const mixBusOffset = busName ? (mixDef.bus_gains?.[busName] ?? 0) : 0;
+    const stemOffset =
+      mixDef.stem_gains?.[stem.filename] ??
+      config.stem_gains?.[stem.filename] ??
+      0;
+
+    return [{ path: stem.path, gainDb: baseBusGain + mixBusOffset + stemOffset }];
   });
-}
-
-function filterStems(stems: ClassifiedStem[], mixDef: MixDefinition): ClassifiedStem[] {
-  if (mixDef.include_only) {
-    const includeOnly = mixDef.include_only;
-    return stems.filter((s) => includeOnly.includes(s.category));
-  }
-  if (mixDef.exclude) {
-    const exclude = mixDef.exclude;
-    return stems.filter((s) => !exclude.includes(s.category));
-  }
-  return stems;
 }

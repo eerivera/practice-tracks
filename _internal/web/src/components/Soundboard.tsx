@@ -1,67 +1,48 @@
 import { useState } from 'react';
-import type { Config, StemCategory, MixDefinition, BusDefinition } from '../types.js';
+import type { Config, StemFile, MixDefinition, BusDefinition } from '../types.js';
+import { findStemBus, stemMatchesPattern } from '@common/mixer.js';
 
 interface Props {
   config: Config;
+  stems: StemFile[];
   onChange: (config: Config) => void;
 }
 
 const MIN_DB = -40;
 const MAX_DB = 6;
+const MUTE_DB = -120;
 
 function clampDb(db: number): number {
   return Math.round(Math.max(MIN_DB, Math.min(MAX_DB, db)));
 }
 
 function faderPct(db: number): number {
-  return ((clampDb(db) - MIN_DB) / (MAX_DB - MIN_DB)) * 100;
+  return ((Math.max(MIN_DB, Math.min(MAX_DB, db)) - MIN_DB) / (MAX_DB - MIN_DB)) * 100;
 }
 
-function getBusGain(buses: BusDefinition[] | undefined, category: StemCategory): number {
-  if (!buses) return 0;
-  return buses.find((b) => b.contains.includes(category))?.gain_db ?? 0;
+function isMuted(db: number): boolean {
+  return db <= MUTE_DB;
 }
 
-interface StemState {
-  category: StemCategory;
-  /** Offset relative to bus (track_rule or mix override). */
-  offsetDb: number;
-  /** bus_gain + offsetDb. */
-  effectiveDb: number;
-  muted: boolean;
-  excluded: boolean;
-}
-
-function getStemStates(config: Config, mixIndex: number): StemState[] {
-  const mix = config.mixes.at(mixIndex);
-  if (mix === undefined) return [];
-  return Object.keys(config.track_rules).map((category) => {
-    const cat = category as StemCategory;
-    const excluded =
-      (mix.include_only != null && !mix.include_only.includes(cat)) ||
-      (mix.exclude?.includes(cat) === true);
-    const override = mix.overrides?.[cat];
-    const rule = config.track_rules[cat] ?? { gain_db: 0 };
-    const offsetDb = override?.gain_db ?? rule.gain_db;
-    const busGain = getBusGain(config.buses, cat);
-    const muted = (override?.mute ?? rule.mute ?? false) && !excluded;
-    return { category: cat, offsetDb, effectiveDb: busGain + offsetDb, muted, excluded };
-  });
+// Returns stems that belong to this bus.
+function stemsForBus(stems: StemFile[], bus: BusDefinition): StemFile[] {
+  return stems.filter((s) => bus.contains.some((pat) => stemMatchesPattern(s.filename, pat)));
 }
 
 // ── Shared fader track ────────────────────────────────────────────────────────
-// Used by both BusChannel and StemChannel so both are pixel-identical in size.
 
 interface FaderTrackProps {
   gainDb: number;
   active: boolean;
+  muted?: boolean;
   onClick: (e: React.MouseEvent<HTMLDivElement>) => void;
   title?: string;
 }
 
-function FaderTrack({ gainDb, active, onClick, title }: FaderTrackProps) {
+function FaderTrack({ gainDb, active, muted, onClick, title }: FaderTrackProps) {
   const pct = faderPct(gainDb);
   const zeroPct = faderPct(0);
+  const barColor = muted ? 'bg-amber-600' : active ? 'bg-indigo-500' : 'bg-slate-600';
   return (
     <div
       className={`relative w-3 h-24 rounded-full cursor-pointer ${active ? 'bg-slate-700' : 'bg-slate-800'}`}
@@ -69,7 +50,7 @@ function FaderTrack({ gainDb, active, onClick, title }: FaderTrackProps) {
       title={title}
     >
       <div
-        className={`absolute bottom-0 w-full rounded-full transition-none ${active ? 'bg-indigo-500' : 'bg-slate-600'}`}
+        className={`absolute bottom-0 w-full rounded-full transition-none ${barColor}`}
         style={{ height: `${pct}%` }}
       />
       <div
@@ -80,67 +61,128 @@ function FaderTrack({ gainDb, active, onClick, title }: FaderTrackProps) {
   );
 }
 
-// ── Bus channel ────────────────────────────────────────────────────────────────
-// Primary fader — always visible. Shows effective gain for single-stem buses,
-// bus master gain for multi-stem buses.
+// ── Gain display / edit widget ────────────────────────────────────────────────
 
-interface BusChannelProps {
-  name: string;
-  /** The value shown on the fader (and returned by onGainChange). */
-  displayGainDb: number;
+interface GainLabelProps {
+  gainDb: number;
   active: boolean;
-  canExpand: boolean;
-  expanded: boolean;
-  onGainChange: (db: number) => void;
-  onToggleExpand: () => void;
+  muted: boolean;
+  excluded: boolean;
+  onEdit: (val: number) => void;
 }
 
-function BusChannel({ name, displayGainDb, active, canExpand, expanded, onGainChange, onToggleExpand }: BusChannelProps) {
+function GainLabel({ gainDb, active, muted, excluded, onEdit }: GainLabelProps) {
   const [editing, setEditing] = useState(false);
   const [editVal, setEditVal] = useState('');
 
+  function commit() {
+    const n = parseFloat(editVal);
+    if (!isNaN(n)) onEdit(clampDb(n));
+    setEditing(false);
+  }
+
+  const label = excluded ? '—' : muted ? 'M' : `${gainDb > 0 ? '+' : ''}${gainDb}`;
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        className="w-12 text-center text-[11px] font-mono bg-slate-700 text-white rounded px-1 py-0.5"
+        value={editVal}
+        onChange={(e) => { setEditVal(e.target.value); }}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+      />
+    );
+  }
+  return (
+    <button
+      className={`text-[11px] font-mono tabular-nums w-12 text-center rounded hover:bg-slate-700 transition-colors ${active ? 'text-slate-300' : 'text-slate-600'}`}
+      onClick={() => { if (!excluded) { setEditVal(String(gainDb)); setEditing(true); } }}
+      title={excluded ? undefined : 'Click to set gain (dB)'}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ── Bus channel ───────────────────────────────────────────────────────────────
+
+interface BusChannelProps {
+  name: string;
+  displayGainDb: number;
+  active: boolean;
+  muted: boolean;
+  canExpand: boolean;
+  expanded: boolean;
+  /** True when no actual stems in the current song match this bus. */
+  unmatched: boolean;
+  onGainChange: (db: number) => void;
+  onMuteToggle: () => void;
+  onToggleExpand: () => void;
+}
+
+function BusChannel({
+  name, displayGainDb, active, muted, canExpand, expanded, unmatched,
+  onGainChange, onMuteToggle, onToggleExpand,
+}: BusChannelProps) {
   function handleTrackClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (unmatched) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = 1 - (e.clientY - rect.top) / rect.height;
     onGainChange(clampDb(MIN_DB + pct * (MAX_DB - MIN_DB)));
   }
 
-  function commitEdit() {
-    const n = parseFloat(editVal);
-    if (!isNaN(n)) onGainChange(clampDb(n));
-    setEditing(false);
-  }
-
-  const label = `${displayGainDb > 0 ? '+' : ''}${displayGainDb}`;
+  const prevGain = displayGainDb; // stored in mute toggle below
 
   return (
-    <div className="flex flex-col items-center gap-1.5 w-14 select-none">
-      {editing ? (
-        <input
-          autoFocus
-          className="w-12 text-center text-[11px] font-mono bg-slate-700 text-white rounded px-1 py-0.5"
-          value={editVal}
-          onChange={(e) => { setEditVal(e.target.value); }}
-          onBlur={commitEdit}
-          onKeyDown={(e) => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false); }}
-        />
-      ) : (
-        <button
-          className={`text-[11px] font-mono tabular-nums w-12 text-center rounded hover:bg-slate-700 transition-colors ${active ? 'text-slate-300' : 'text-slate-600'}`}
-          onClick={() => { setEditVal(String(displayGainDb)); setEditing(true); }}
-          title="Click to set gain (dB)"
+    <div className={`flex flex-col items-center gap-1.5 w-14 select-none ${unmatched ? 'opacity-40' : ''}`}>
+      {/* Unmatched warning badge */}
+      {unmatched && (
+        <div
+          className="text-[9px] text-amber-400 font-bold leading-none"
+          title="No stems in this song match this bus. Check your bus config or stem filenames."
         >
-          {label}
-        </button>
+          ⚠
+        </div>
       )}
+      {!unmatched && (
+        <GainLabel
+          gainDb={displayGainDb}
+          active={active}
+          muted={muted}
+          excluded={false}
+          onEdit={onGainChange}
+        />
+      )}
+      {unmatched && <div className="h-[18px]" />}
 
-      <FaderTrack gainDb={displayGainDb} active={active} onClick={handleTrackClick} />
+      <FaderTrack
+        gainDb={isMuted(displayGainDb) ? 0 : displayGainDb}
+        active={active && !unmatched}
+        muted={muted}
+        onClick={handleTrackClick}
+      />
 
-      <span className={`text-[11px] text-center leading-tight w-14 break-words px-0.5 ${active ? 'text-slate-200' : 'text-slate-600'}`}>
+      <span
+        className={`text-[11px] text-center leading-tight w-14 break-words px-0.5 ${active && !unmatched ? 'text-slate-200' : 'text-slate-600'}`}
+        title={unmatched ? 'No stems matched — see bus config' : undefined}
+      >
         {name}
       </span>
 
-      {/* Expand toggle — shown for multi-stem buses, spacer otherwise */}
+      {/* Mute button (only when stems present) */}
+      {!unmatched && (
+        <button
+          className={`text-[10px] w-6 h-5 rounded font-bold transition-colors ${muted ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+          onClick={() => { onMuteToggle(); void prevGain; }}
+          title={muted ? 'Unmute bus' : 'Mute bus'}
+        >
+          M
+        </button>
+      )}
+
+      {/* Expand toggle / spacer */}
       {canExpand ? (
         <button
           onClick={onToggleExpand}
@@ -152,87 +194,68 @@ function BusChannel({ name, displayGainDb, active, canExpand, expanded, onGainCh
           {expanded ? '▲' : '▼'}
         </button>
       ) : (
-        <div className="h-6" />
+        <div className={unmatched ? 'h-0' : 'h-6'} />
       )}
     </div>
   );
 }
 
 // ── Stem channel ──────────────────────────────────────────────────────────────
-// Secondary fader — shown in the expanded detail panel. Displays offset from bus.
 
 interface StemChannelProps {
-  category: StemCategory;
-  offsetDb: number;
-  effectiveDb: number;
-  busGain: number;
+  filename: string;
+  stemGainDb: number;    // mix.stem_gains[filename] ?? 0
+  effectiveDb: number;   // bus (with mix offset) + stem gain
+  busDisplayDb: number;  // just for tooltip context
   muted: boolean;
   excluded: boolean;
   onGainChange: (db: number) => void;
   onMuteToggle: () => void;
-  onExcludeToggle: () => void;
 }
 
-function StemChannel({ category, offsetDb, effectiveDb, busGain, muted, excluded, onGainChange, onMuteToggle, onExcludeToggle }: StemChannelProps) {
-  const [editing, setEditing] = useState(false);
-  const [editVal, setEditVal] = useState('');
+function StemChannel({ filename, stemGainDb, effectiveDb, busDisplayDb, muted, excluded, onGainChange, onMuteToggle }: StemChannelProps) {
   const active = !excluded && !muted;
 
   function handleTrackClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (excluded) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = 1 - (e.clientY - rect.top) / rect.height;
     onGainChange(clampDb(MIN_DB + pct * (MAX_DB - MIN_DB)));
   }
 
-  function commitEdit() {
-    const n = parseFloat(editVal);
-    if (!isNaN(n)) onGainChange(clampDb(n));
-    setEditing(false);
-  }
-
-  const label = excluded ? '—' : muted ? 'M' : `${offsetDb > 0 ? '+' : ''}${offsetDb}`;
-  const hasBusOffset = busGain !== 0;
-  const title = excluded ? undefined
-    : hasBusOffset
-      ? `Offset from bus · effective: ${effectiveDb > 0 ? '+' : ''}${effectiveDb} dB · click to set`
-      : 'Click to set gain (dB)';
+  const busLabel = busDisplayDb !== 0 ? ` · bus: ${busDisplayDb > 0 ? '+' : ''}${busDisplayDb} dB` : '';
+  const title = excluded ? undefined : `Offset from bus · effective: ${effectiveDb > 0 ? '+' : ''}${effectiveDb} dB${busLabel}`;
 
   return (
     <div className="flex flex-col items-center gap-1.5 w-14 select-none">
-      {editing ? (
-        <input
-          autoFocus
-          className="w-12 text-center text-[11px] font-mono bg-slate-700 text-white rounded px-1 py-0.5"
-          value={editVal}
-          onChange={(e) => { setEditVal(e.target.value); }}
-          onBlur={commitEdit}
-          onKeyDown={(e) => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false); }}
-        />
-      ) : (
-        <button
-          className={`text-[11px] font-mono tabular-nums w-12 text-center rounded hover:bg-slate-700 transition-colors ${active ? 'text-slate-300' : 'text-slate-600'}`}
-          onClick={() => { if (!excluded) { setEditVal(String(offsetDb)); setEditing(true); } }}
-          title={title}
-        >
-          {label}
-        </button>
-      )}
+      <GainLabel
+        gainDb={muted ? MUTE_DB : stemGainDb}
+        active={active}
+        muted={muted}
+        excluded={excluded}
+        onEdit={onGainChange}
+      />
 
-      <FaderTrack gainDb={offsetDb} active={active} onClick={excluded ? () => {} : handleTrackClick} title={title} />
+      <FaderTrack
+        gainDb={muted ? 0 : stemGainDb}
+        active={active}
+        muted={muted}
+        onClick={excluded ? () => {} : handleTrackClick}
+        title={title}
+      />
 
-      <button
-        className={`text-[11px] text-center leading-tight w-14 break-words rounded px-0.5 transition-colors ${excluded ? 'text-slate-700 hover:text-slate-500' : 'text-slate-300 hover:text-white'}`}
-        onClick={onExcludeToggle}
-        title={excluded ? 'Click to include stem' : 'Click to exclude stem'}
+      <span
+        className={`text-[11px] text-center leading-tight w-14 break-words px-0.5 ${active ? 'text-slate-300' : 'text-slate-600'}`}
+        title={filename}
       >
-        {category.replace(/_/g, ' ')}
-      </button>
+        {filename}
+      </span>
 
       {!excluded && (
         <button
           className={`text-[10px] w-6 h-5 rounded font-bold transition-colors ${muted ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
           onClick={onMuteToggle}
-          title={muted ? 'Unmute' : 'Mute'}
+          title={muted ? 'Unmute stem' : 'Mute stem'}
         >
           M
         </button>
@@ -303,12 +326,10 @@ function MixTab({ name, selected, onSelect, onRename, onRemove, removable }: Mix
 
 // ── Main Soundboard ───────────────────────────────────────────────────────────
 
-export function Soundboard({ config, onChange }: Props) {
+export function Soundboard({ config, stems, onChange }: Props) {
   const [selected, setSelected] = useState(0);
   const [expandedBusIdx, setExpandedBusIdx] = useState<number | null>(null);
-  const stems = getStemStates(config, selected);
-  const mix = config.mixes[selected];
-  const buses = config.buses ?? [];
+  const mix = config.mixes[selected] as MixDefinition | undefined;
 
   // ── Mix mutations ─────────────────────────────────────────────────────────
 
@@ -317,46 +338,32 @@ export function Soundboard({ config, onChange }: Props) {
     onChange({ ...config, mixes });
   }
 
-  function setGain(category: StemCategory, db: number) {
+  function setBusGainForMix(busName: string, db: number) {
     updateMix(selected, (m) => ({
       ...m,
-      overrides: { ...m.overrides, [category]: { ...m.overrides?.[category], gain_db: db } },
+      bus_gains: { ...m.bus_gains, [busName]: db },
     }));
   }
 
-  function toggleMute(category: StemCategory) {
-    const current = mix.overrides?.[category]?.mute ?? config.track_rules[category]?.mute ?? false;
+  function setStemGainForMix(filename: string, db: number) {
     updateMix(selected, (m) => ({
       ...m,
-      overrides: { ...m.overrides, [category]: { ...m.overrides?.[category], mute: !current } },
+      stem_gains: { ...m.stem_gains, [filename]: db },
     }));
   }
 
-  function toggleExclude(category: StemCategory) {
-    const currentlyExcluded = stems.find((s) => s.category === category)?.excluded ?? false;
-    updateMix(selected, (m) => {
-      let exclude = m.exclude ? [...m.exclude] : [];
-      if (m.include_only) {
-        const allCats = Object.keys(config.track_rules) as StemCategory[];
-        const includeOnly = m.include_only;
-        exclude = allCats.filter((c) => !includeOnly.includes(c));
-      }
-      return {
-        ...m,
-        include_only: undefined,
-        exclude: currentlyExcluded ? exclude.filter((c) => c !== category) : [...exclude, category],
-      };
-    });
+  function toggleBusMute(busName: string, currentGain: number) {
+    const alreadyMuted = isMuted(currentGain);
+    // When muting: store current gain in a side-channel so we can restore it.
+    // We use a convention: gain -120 = muted; restoration recalculates from stored value.
+    // For simplicity, unmute restores to 0 (the user can re-set if needed).
+    setBusGainForMix(busName, alreadyMuted ? 0 : MUTE_DB);
   }
 
-  // ── Bus mutations ─────────────────────────────────────────────────────────
-
-  function setBusGain(busIndex: number, newBusGain: number) {
-    const newBuses = buses.map((b, i) => i === busIndex ? { ...b, gain_db: newBusGain } : b);
-    onChange({ ...config, buses: newBuses });
+  function toggleStemMute(filename: string, currentGain: number) {
+    const alreadyMuted = isMuted(currentGain);
+    setStemGainForMix(filename, alreadyMuted ? 0 : MUTE_DB);
   }
-
-  // ── Mix-level mutations ───────────────────────────────────────────────────
 
   function renameMix(index: number, name: string) {
     updateMix(index, (m) => ({ ...m, name }));
@@ -374,31 +381,39 @@ export function Soundboard({ config, onChange }: Props) {
     setSelected(config.mixes.length);
   }
 
-  // ── Layout data ───────────────────────────────────────────────────────────
+  // ── Per-bus computed layout ───────────────────────────────────────────────
 
-  const assignedCategories = new Set(buses.flatMap((b) => b.contains));
-  const ungroupedStems = stems.filter((s) => !assignedCategories.has(s.category));
+  const busRows = config.buses.map((bus, busIdx) => {
+    const busStems = stemsForBus(stems, bus);
+    const unmatched = busStems.length === 0;
+    const canExpand = busStems.length > 1;
 
-  // Per-bus computed values for BusChannel rendering.
-  const busRows = buses.map((bus, busIdx) => {
-    const busStems = stems.filter((s) => bus.contains.includes(s.category));
-    const isMulti = bus.contains.length > 1;
-    const allExcluded = busStems.length > 0 && busStems.every((s) => s.excluded);
+    const busName = bus.name;
+    const mixBusOffset = mix?.bus_gains?.[busName] ?? 0;
+    const displayGainDb = bus.gain_db + mixBusOffset;
+    const muted = isMuted(displayGainDb);
 
-    // Single-stem: show effective gain so the fader reads as the actual level.
-    // Moving it adjusts bus.gain_db such that effective stays = fader value.
-    const singleOffset = !isMulti && busStems.length === 1 ? busStems[0].offsetDb : 0;
-    const displayGainDb = isMulti ? bus.gain_db : bus.gain_db + singleOffset;
+    const allExcluded = !unmatched && mix != null && (
+      (mix.include_only != null && !mix.include_only.includes(busName)) ||
+      (mix.exclude?.includes(busName) === true)
+    );
 
-    function handleBusGainChange(newDisplay: number) {
-      const newBusGain = isMulti ? newDisplay : newDisplay - singleOffset;
-      setBusGain(busIdx, newBusGain);
-    }
+    const stemRows = busStems.map((stem) => {
+      const stemMixGain = mix?.stem_gains?.[stem.filename];
+      const stemGlobalGain = config.stem_gains?.[stem.filename] ?? 0;
+      const stemGainDb = stemMixGain ?? stemGlobalGain;
+      const effectiveDb = displayGainDb + stemGainDb;
+      const stemMuted = isMuted(stemGainDb) || muted;
+      return { stem, stemGainDb, effectiveDb, stemMuted };
+    });
 
-    return { bus, busIdx, busStems, isMulti, allExcluded, displayGainDb, handleBusGainChange };
+    return { bus, busIdx, busStems, unmatched, canExpand, displayGainDb, muted, allExcluded, stemRows };
   });
 
   const expandedBus = expandedBusIdx !== null ? busRows[expandedBusIdx] : null;
+
+  // Stems not matched by any bus — shown flat with a warning.
+  const unmatchedStems = stems.filter((s) => !findStemBus(config.buses, s.filename));
 
   return (
     <div className="space-y-3">
@@ -409,7 +424,7 @@ export function Soundboard({ config, onChange }: Props) {
             key={i}
             name={m.name}
             selected={i === selected}
-            onSelect={() => { setSelected(i); }}
+            onSelect={() => { setSelected(i); setExpandedBusIdx(null); }}
             onRename={(name) => { renameMix(i, name); }}
             onRemove={() => { removeMix(i); }}
             removable={config.mixes.length > 1}
@@ -425,66 +440,90 @@ export function Soundboard({ config, onChange }: Props) {
 
       {/* Fader panel */}
       <div className="bg-slate-800 rounded-xl p-4 space-y-4">
-        {/* Primary: bus fader row */}
+        {/* Primary row: one channel per bus */}
         <div className="overflow-x-auto">
-          <div className="flex gap-4 min-w-max">
-            {busRows.map(({ bus, busIdx, isMulti, allExcluded, displayGainDb, handleBusGainChange }) => (
+          <div className="flex gap-4 min-w-max items-end">
+            {busRows.map(({ bus, busIdx, unmatched, canExpand, displayGainDb, muted, allExcluded }) => (
               <BusChannel
                 key={bus.name}
                 name={bus.name}
                 displayGainDb={displayGainDb}
-                active={!allExcluded}
-                canExpand={isMulti}
+                active={!allExcluded && !unmatched}
+                muted={muted}
+                canExpand={canExpand}
                 expanded={expandedBusIdx === busIdx}
-                onGainChange={handleBusGainChange}
+                unmatched={unmatched}
+                onGainChange={(db) => { setBusGainForMix(bus.name, db - bus.gain_db); }}
+                onMuteToggle={() => { toggleBusMute(bus.name, displayGainDb); }}
                 onToggleExpand={() => { setExpandedBusIdx(expandedBusIdx === busIdx ? null : busIdx); }}
               />
             ))}
 
-            {/* Ungrouped stems shown as individual channels at the end */}
-            {ungroupedStems.length > 0 && (
+            {/* Unmatched stems — shown flat with amber warning */}
+            {unmatchedStems.length > 0 && (
               <>
-                {buses.length > 0 && (
+                {config.buses.length > 0 && (
                   <div className="w-px bg-slate-700 self-stretch mx-1" />
                 )}
-                {ungroupedStems.map((stem) => (
-                  <StemChannel
-                    key={stem.category}
-                    category={stem.category}
-                    offsetDb={stem.offsetDb}
-                    effectiveDb={stem.effectiveDb}
-                    busGain={0}
-                    muted={stem.muted}
-                    excluded={stem.excluded}
-                    onGainChange={(db) => { setGain(stem.category, db); }}
-                    onMuteToggle={() => { toggleMute(stem.category); }}
-                    onExcludeToggle={() => { toggleExclude(stem.category); }}
-                  />
-                ))}
+                {unmatchedStems.map((stem) => {
+                  const stemMixGain = mix?.stem_gains?.[stem.filename] ?? 0;
+                  const stemMuted = isMuted(stemMixGain);
+                  return (
+                    <div key={stem.filename} className="flex flex-col items-center gap-1.5 w-14 select-none">
+                      <div className="text-[9px] text-amber-400 font-bold" title="Not assigned to any bus">⚠</div>
+                      <GainLabel
+                        gainDb={stemMixGain}
+                        active={!stemMuted}
+                        muted={stemMuted}
+                        excluded={false}
+                        onEdit={(db) => { setStemGainForMix(stem.filename, db); }}
+                      />
+                      <FaderTrack
+                        gainDb={stemMuted ? 0 : stemMixGain}
+                        active={!stemMuted}
+                        muted={stemMuted}
+                        onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const pct = 1 - (e.clientY - rect.top) / rect.height;
+                          setStemGainForMix(stem.filename, clampDb(MIN_DB + pct * (MAX_DB - MIN_DB)));
+                        }}
+                      />
+                      <span className="text-[11px] text-amber-500 text-center leading-tight w-14 break-words px-0.5" title="Not assigned to any bus">
+                        {stem.filename}
+                      </span>
+                      <button
+                        className={`text-[10px] w-6 h-5 rounded font-bold transition-colors ${stemMuted ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+                        onClick={() => { toggleStemMute(stem.filename, stemMixGain); }}
+                        title={stemMuted ? 'Unmute' : 'Mute'}
+                      >
+                        M
+                      </button>
+                    </div>
+                  );
+                })}
               </>
             )}
           </div>
         </div>
 
-        {/* Secondary: individual stem detail for expanded bus */}
+        {/* Expanded stem detail panel */}
         {expandedBus && (
           <div className="border-t border-slate-700 pt-4">
             <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
               {expandedBus.bus.name} — individual stems
             </p>
             <div className="flex gap-3 overflow-x-auto pb-1">
-              {expandedBus.busStems.map((stem) => (
+              {expandedBus.stemRows.map(({ stem, stemGainDb, effectiveDb, stemMuted }) => (
                 <StemChannel
-                  key={stem.category}
-                  category={stem.category}
-                  offsetDb={stem.offsetDb}
-                  effectiveDb={stem.effectiveDb}
-                  busGain={expandedBus.bus.gain_db}
-                  muted={stem.muted}
-                  excluded={stem.excluded}
-                  onGainChange={(db) => { setGain(stem.category, db); }}
-                  onMuteToggle={() => { toggleMute(stem.category); }}
-                  onExcludeToggle={() => { toggleExclude(stem.category); }}
+                  key={stem.filename}
+                  filename={stem.filename}
+                  stemGainDb={stemGainDb}
+                  effectiveDb={effectiveDb}
+                  busDisplayDb={expandedBus.displayGainDb}
+                  muted={stemMuted}
+                  excluded={false}
+                  onGainChange={(db) => { setStemGainForMix(stem.filename, db); }}
+                  onMuteToggle={() => { toggleStemMute(stem.filename, stemGainDb); }}
                 />
               ))}
             </div>
@@ -494,10 +533,8 @@ export function Soundboard({ config, onChange }: Props) {
 
       <p className="text-[11px] text-slate-600">
         {expandedBus
-          ? `${expandedBus.bus.name}: click fader to set offset · click label to exclude/include · M to mute · ▲ to collapse`
-          : buses.length > 0
-            ? 'Click fader to set group level · ▼ to show individual stems · Double-click preset to rename'
-            : 'Click fader to set level · click label to exclude/include · M to mute · Double-click preset to rename'}
+          ? `${expandedBus.bus.name}: fader = offset from bus · ▲ to collapse`
+          : 'Bus fader = gain for all stems in that bus · ▼ to see individual stems · Double-click tab to rename'}
       </p>
     </div>
   );

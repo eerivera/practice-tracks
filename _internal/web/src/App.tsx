@@ -5,7 +5,7 @@ import { DropZone } from './components/DropZone.js';
 import { ProgressFeed } from './components/ProgressFeed.js';
 import { Soundboard } from './components/Soundboard.js';
 import { PastMixes } from './components/PastMixes.js';
-import type { Config, ProgressEvent, SongOutputs } from './types.js';
+import type { Config, StemFile, ProgressEvent, SongOutputs } from './types.js';
 
 const api = createApi();
 
@@ -27,6 +27,10 @@ export function App() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [events, setEvents] = useState<ProgressEvent[]>([]);
   const [songDirs, setSongDirs] = useState<string[]>([]);
+  // stems[songDir] — populated after extraction and on song select
+  const [stemsBySong, setStemsBySong] = useState<Partial<Record<string, StemFile[]>>>({});
+  const [selectedSongDir, setSelectedSongDir] = useState<string | null>(null);
+  const [availableSongs, setAvailableSongs] = useState<string[]>([]);
   const [existingOutputCount, setExistingOutputCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [fileCount, setFileCount] = useState(0);
@@ -39,7 +43,24 @@ export function App() {
   useEffect(() => {
     api.getConfig().then(setConfig).catch(console.error);
     api.getOutputs().then(setPastOutputs).catch(console.error);
+    // Load previously extracted songs on startup (server mode only — browser
+    // returns empty until a zip is extracted).
+    api.listSongs().then((dirs) => {
+      setAvailableSongs(dirs);
+      if (dirs.length > 0) setSelectedSongDir(dirs[dirs.length - 1]);
+    }).catch(console.error);
   }, []);
+
+  // Fetch stems whenever the selected song changes.
+  useEffect(() => {
+    if (!selectedSongDir) return;
+    if (stemsBySong[selectedSongDir]) return; // already loaded
+    api.getStems(selectedSongDir).then((s) => {
+      setStemsBySong((prev) => ({ ...prev, [selectedSongDir]: s }));
+    }).catch(console.error);
+  }, [selectedSongDir, stemsBySong]);
+
+  const currentStems: StemFile[] = (selectedSongDir ? stemsBySong[selectedSongDir] : null) ?? [];
 
   // ── Config editing ────────────────────────────────────────────────────────────
 
@@ -132,7 +153,22 @@ export function App() {
       () => {
         setSongDirs(extracted);
         setPhase('extracted');
+
+        // Add newly extracted songs to the available list, select the most recent.
         if (extracted.length > 0) {
+          setAvailableSongs((prev) => {
+            const merged = [...new Set([...prev, ...extracted])];
+            return merged;
+          });
+          setSelectedSongDir(extracted[extracted.length - 1]);
+
+          // Pre-fetch stems for the extracted songs.
+          for (const dir of extracted) {
+            api.getStems(dir).then((s) => {
+              setStemsBySong((prev) => ({ ...prev, [dir]: s }));
+            }).catch(console.error);
+          }
+
           api.checkOutputs(extracted)
             .then((results) => { setExistingOutputCount(results.filter((r) => r.hasOutput).length); })
             .catch(console.error);
@@ -150,8 +186,6 @@ export function App() {
     setShowForceModal(false);
     setPhase('normalizing');
 
-    // When normalization is off the prepare step is instant; skip straight to
-    // mixing so the user never sees an intermediate "normalized" screen.
     const skipToMix = !config.normalize;
 
     let skips = 0;
@@ -211,6 +245,12 @@ export function App() {
   const isProcessing = ['extracting', 'normalizing', 'mixing'].includes(phase);
   const showLog = phase !== 'idle' && phase !== 'files_selected';
   const soundboardDimmed = phase === 'mixing';
+  const showSoundboard = config != null && currentStems.length > 0;
+
+  // Display name for a song directory (strip the full path prefix).
+  function songDisplayName(dir: string): string {
+    return dir.split('/').pop() ?? dir;
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
@@ -334,7 +374,7 @@ export function App() {
           </button>
         )}
 
-        {/* Normalization settings — above the mix panel since it runs first */}
+        {/* Normalization settings */}
         {config && (
           <div className="flex items-center gap-3">
             <label
@@ -372,16 +412,33 @@ export function App() {
           </div>
         )}
 
-        {/* Mix presets — always visible once config is loaded; dimmed while mixing */}
-        {config && (
+        {/* Mix presets — only shown when a song is loaded */}
+        {showSoundboard && (
           <div className={`space-y-3 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">
-                Mix Presets
-                {configDirty && <span className="ml-2 text-amber-400 normal-case font-normal">● unsaved</span>}
-              </h2>
+            <div className="flex items-center justify-between flex-wrap gap-y-2">
+              <div className="flex items-center gap-3">
+                <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">
+                  Mix Presets
+                  {configDirty && <span className="ml-2 text-amber-400 normal-case font-normal">● unsaved</span>}
+                </h2>
+                {/* Song selector */}
+                {availableSongs.length > 1 && (
+                  <select
+                    value={selectedSongDir ?? ''}
+                    onChange={(e) => { setSelectedSongDir(e.target.value); }}
+                    className="text-xs bg-slate-700 text-slate-300 rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                  >
+                    {availableSongs.map((dir) => (
+                      <option key={dir} value={dir}>{songDisplayName(dir)}</option>
+                    ))}
+                  </select>
+                )}
+                {availableSongs.length === 1 && selectedSongDir && (
+                  <span className="text-xs text-slate-500">{songDisplayName(selectedSongDir)}</span>
+                )}
+              </div>
+
               <div className="flex gap-2">
-                {/* Hidden file input for upload */}
                 <input
                   ref={uploadInputRef}
                   type="file"
@@ -420,11 +477,18 @@ export function App() {
                 </button>
               </div>
             </div>
-            <Soundboard config={config} onChange={handleConfigChange} />
+            <Soundboard config={config} stems={currentStems} onChange={handleConfigChange} />
           </div>
         )}
 
-        {/* Past mixes — always visible; links dimmed while processing */}
+        {/* When config is loaded but no song selected yet */}
+        {config && !showSoundboard && availableSongs.length === 0 && phase === 'idle' && (
+          <p className="text-sm text-slate-600 text-center py-4">
+            Drop a zip above to load stems and configure your mixes.
+          </p>
+        )}
+
+        {/* Past mixes */}
         <div className={`transition-opacity ${isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
           <PastMixes
             outputs={pastOutputs}

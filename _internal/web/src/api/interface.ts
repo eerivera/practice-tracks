@@ -1,4 +1,4 @@
-import type { Config, QueueStatus, SongOutputs } from '../types.js';
+import type { Config, StemFile, QueueStatus, SongOutputs } from '../types.js';
 
 export interface ProcessingApi {
   /** Step 1: upload zip files and extract stems to disk. */
@@ -30,6 +30,12 @@ export interface ProcessingApi {
 
   /** List all existing mix files on disk, organised by song → variant. */
   getOutputs(): Promise<SongOutputs[]>;
+
+  /** List song directories that have extracted stems. */
+  listSongs(): Promise<string[]>;
+
+  /** Return the stem files for a given song directory. */
+  getStems(songDir: string): Promise<StemFile[]>;
 
   /** Return a URL that downloads all mixes for one key/BPM variant as a zip. */
   getVariantZipUrl(variantPath: string): string;

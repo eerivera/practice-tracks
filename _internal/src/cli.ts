@@ -5,7 +5,8 @@ import fs from 'fs';
 import { runPipeline } from './pipeline.js';
 import { extractMultitrackZip, parseSongMetadata, formatOutputSubdir } from './extractor.js';
 import { consoleEmitter } from '../common/events.js';
-import { classifyStems } from '../common/stems/classifier.js';
+import { findStemBus } from '../common/mixer.js';
+import { loadConfig } from './config/loader.js';
 import {
   getMixQueue,
   getUploadQueue,
@@ -509,25 +510,27 @@ program
 
 program
   .command('list-stems <song-dir>')
-  .description('Classify and list stems without processing (dry run)')
+  .description('List stems and their bus assignments without processing (dry run)')
   .option('-s, --stems <subdir>', 'stems subdirectory name', 'stems')
-  .action((songDir: string, options: { stems: string }) => {
-    const stemsDir = path.join(resolvedPath(songDir), options.stems);
+  .action((songDirArg: string, options: { stems: string }) => {
+    const songDir = resolvedPath(songDirArg);
+    const stemsDir = path.join(songDir, options.stems);
     if (!fs.existsSync(stemsDir)) {
       console.error(`Stems directory not found: ${stemsDir}`);
       process.exit(1);
     }
+    const config = loadConfig(songDir);
     const files = fs
       .readdirSync(stemsDir)
-      .filter((f) => /\.(m4a|wav|mp3|aiff?)$/i.test(f))
-      .map((f) => path.join(stemsDir, f));
+      .filter((f) => /\.(m4a|wav|mp3|aiff?)$/i.test(f));
 
-    const stems = classifyStems(files);
-    console.log(`${stems.length} stems in ${stemsDir}:\n`);
-    for (const stem of stems) {
-      const ext = path.extname(stem.path).slice(1).padEnd(4);
-      const idx = stem.index !== undefined ? ` [${stem.index}]` : '';
-      console.log(`  ${stem.filename}.${ext}  →  ${stem.category}${idx}`);
+    console.log(`${files.length} stems in ${stemsDir}:\n`);
+    for (const file of files) {
+      const filename = path.basename(file, path.extname(file));
+      const ext = path.extname(file).slice(1).padEnd(4);
+      const bus = findStemBus(config.buses, filename);
+      const busLabel = bus ? `→  ${bus.name}` : '→  (unmatched — add to a bus in config)';
+      console.log(`  ${filename}.${ext}  ${busLabel}`);
     }
   });
 

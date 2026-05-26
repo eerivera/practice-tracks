@@ -1,7 +1,6 @@
 import { unzipSync, zipSync } from 'fflate';
-import { classifyStem } from '@common/stems/classifier.js';
 import { buildMixInputs } from '@common/mixer.js';
-import type { Config, StemCategory, QueueStatus, SongOutputs } from '../types.js';
+import type { Config, StemFile, QueueStatus, SongOutputs } from '../types.js';
 import type { ProcessingApi } from './interface.js';
 import { FakeEventSource } from './fake-event-source.js';
 import { BrowserWasmBackend } from './browser-backend.js';
@@ -12,8 +11,6 @@ import { DEFAULT_CONFIG } from './embedded-config.js';
 interface BrowserStem {
   filename: string;
   ext: string;
-  category: StemCategory;
-  index?: number;
   rawData: Uint8Array;
   normalizedData?: Uint8Array;
 }
@@ -76,14 +73,9 @@ export class BrowserApi implements ProcessingApi {
           if (entryPath.endsWith('/') || !AUDIO_EXT_RE.test(entryPath)) continue;
           const extMatch = AUDIO_EXT_RE.exec(entryPath);
           const ext = extMatch ? extMatch[1] : 'wav';
-          const classified = classifyStem(entryPath);
-          song.stems.push({
-            filename: classified.filename,
-            ext,
-            category: classified.category,
-            index: classified.index,
-            rawData: data,
-          });
+          const lastSegment = entryPath.replace(/\\/g, '/').split('/').pop() ?? entryPath;
+          const filename = lastSegment.replace(/\.[^.]+$/, '');
+          song.stems.push({ filename, ext, rawData: data });
         }
 
         if (song.stems.length > 0) {
@@ -93,7 +85,7 @@ export class BrowserApi implements ProcessingApi {
           es?.dispatch({ type: 'extract_start', total: song.stems.length });
           es?.dispatch({
             type: 'stems_classified',
-            stems: song.stems.map((s) => ({ filename: s.filename, ext: s.ext, category: s.category, index: s.index })),
+            stems: song.stems.map((s) => ({ filename: s.filename, ext: s.ext })),
             total: song.stems.length,
           });
           es?.dispatch({ type: 'extract_complete', total: song.stems.length, elapsedMs: Date.now() - t });
@@ -162,11 +154,9 @@ export class BrowserApi implements ProcessingApi {
           .filter((s) => s.normalizedData !== undefined)
           .map((s) => [`${song.songDir}/${s.filename}`, s])
       );
-      const classifiedStems = Array.from(stemByPath.entries()).map(([p, s]) => ({
+      const stemFiles: StemFile[] = Array.from(stemByPath.entries()).map(([p, s]) => ({
         path: p,
         filename: s.filename,
-        category: s.category,
-        index: s.index,
       }));
 
       const songFiles: { name: string; path: string }[] = [];
@@ -174,7 +164,7 @@ export class BrowserApi implements ProcessingApi {
       const startSong = Date.now();
 
       for (const mixDef of config.mixes) {
-        const mixInputs = buildMixInputs(classifiedStems, mixDef, config);
+        const mixInputs = buildMixInputs(stemFiles, mixDef, config);
         if (mixInputs.length === 0) {
           es?.dispatch({ type: 'mix_skipped', name: mixDef.name, reason: 'no matching stems' });
           continue;
@@ -256,6 +246,29 @@ export class BrowserApi implements ProcessingApi {
     // Return the most recent session that has completed mixes.
     for (const session of [...this.sessions.values()].reverse()) {
       if (session.outputs.length > 0) return Promise.resolve(session.outputs);
+    }
+    return Promise.resolve([]);
+  }
+
+  // In browser mode, "songs" are the songs in the most recent session.
+  listSongs(): Promise<string[]> {
+    for (const session of [...this.sessions.values()].reverse()) {
+      if (session.songs.length > 0) {
+        return Promise.resolve(session.songs.map((s) => s.songDir));
+      }
+    }
+    return Promise.resolve([]);
+  }
+
+  // Return stem files for a song from the current in-memory session.
+  getStems(songDir: string): Promise<StemFile[]> {
+    for (const session of [...this.sessions.values()].reverse()) {
+      const song = session.songs.find((s) => s.songDir === songDir);
+      if (song) {
+        return Promise.resolve(
+          song.stems.map((s) => ({ path: `${songDir}/${s.filename}`, filename: s.filename }))
+        );
+      }
     }
     return Promise.resolve([]);
   }

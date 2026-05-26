@@ -3,11 +3,10 @@ import path from 'path';
 import os from 'os';
 import { createBackend } from './backend/factory.js';
 import { loadConfig } from './config/loader.js';
-import { classifyStems } from '../common/stems/classifier.js';
-import { buildMixInputs } from '../common/mixer.js';
+import { findStemBus, buildMixInputs } from '../common/mixer.js';
 import { parseSongMetadata, formatOutputSubdir, formatSongDisplayName } from './extractor.js';
 import { consoleEmitter, type Emitter } from '../common/events.js';
-import { type ClassifiedStem, type AudioBackend, type Config } from '../common/types.js';
+import { type StemFile, type AudioBackend, type Config } from '../common/types.js';
 
 const AUDIO_EXTENSIONS = /\.(m4a|wav|mp3|aiff?)$/i;
 const CANDIDATE_STEMS_DIRS = ['stems', 'MultiTracks'];
@@ -34,7 +33,7 @@ export interface NormalizeResult {
   songDir: string;
   outputDir: string;
   tmpDir?: string;
-  normalizedStems: ClassifiedStem[];
+  normalizedStems: StemFile[];
   config: Config;
   backend: AudioBackend;
   pipelineStartMs: number;
@@ -51,7 +50,7 @@ function outputAlreadyExists(outputDir: string, songTitle: string, mixNames: str
   );
 }
 
-function findStemsDir(songDir: string, preferred?: string): string {
+export function findStemsDir(songDir: string, preferred?: string): string {
   const candidates = preferred ? [preferred, ...CANDIDATE_STEMS_DIRS] : CANDIDATE_STEMS_DIRS;
   for (const name of candidates) {
     const p = path.join(songDir, name);
@@ -99,9 +98,22 @@ export function hasExistingOutput(songDir: string): boolean {
   }
 }
 
+// Lists all StemFile entries for a song directory (reads the stems dir).
+export function listStemFiles(songDir: string, stemsDirName?: string): StemFile[] {
+  const stemsDir = findStemsDir(songDir, stemsDirName);
+  return fs
+    .readdirSync(stemsDir)
+    .filter((f) => AUDIO_EXTENSIONS.test(f))
+    .map((f) => ({
+      path: path.join(stemsDir, f),
+      filename: path.basename(f, path.extname(f)),
+    }));
+}
+
 // ── Step 1: normalize ─────────────────────────────────────────────────────────
-// Classifies stems, normalises to a temp directory, and returns the result for
-// the mix step. Returns null and emits a skip event if output already exists.
+// Loads stems from disk, warns on unmatched buses, normalises to a temp
+// directory, and returns the result for the mix step.
+// Returns null and emits a skip event if output already exists.
 
 export async function runNormalize(
   songDir: string,
@@ -138,16 +150,20 @@ export async function runNormalize(
 
   if (stemFiles.length === 0) throw new Error(`No audio files found in ${stemsDir}`);
 
-  const stems = classifyStems(stemFiles);
+  const stems: StemFile[] = stemFiles.map((f) => ({
+    path: f,
+    filename: path.basename(f, path.extname(f)),
+  }));
 
-  const unknownStems = stems.filter((s) => s.category === 'unknown');
-  if (unknownStems.length > 0) {
+  // Warn about stems that don't match any bus.
+  const unmatchedStems = stems.filter((s) => !findStemBus(config.buses, s.filename));
+  if (unmatchedStems.length > 0) {
     emit({
       type: 'warn',
       message:
-        `Warning: ${unknownStems.length} stem(s) could not be classified and will be included at 0 dB:\n` +
-        unknownStems
-          .map((s) => `  ${s.filename}${path.extname(s.path)} — add a rule in config or rename the file`)
+        `Warning: ${unmatchedStems.length} stem(s) not assigned to any bus (included at 0 dB):\n` +
+        unmatchedStems
+          .map((s) => `  ${s.filename} — add it to a bus in config or create a new bus`)
           .join('\n') +
         '\n',
     });
@@ -159,8 +175,7 @@ export async function runNormalize(
     stems: stems.map((s) => ({
       filename: s.filename,
       ext: path.extname(s.path).slice(1),
-      category: s.category,
-      index: s.index,
+      busName: findStemBus(config.buses, s.filename)?.name,
     })),
   });
 
@@ -185,7 +200,7 @@ export async function runNormalize(
   emit({ type: 'normalize_start', total: stems.length, concurrency, targetLufs: config.target_lufs });
   const normalizeStart = Date.now();
 
-  const normalizedStems: ClassifiedStem[] = new Array<ClassifiedStem>(stems.length);
+  const normalizedStems: StemFile[] = new Array<StemFile>(stems.length);
   let completed = 0;
   const queue = stems.map((stem, i) => ({ stem, i }));
 
