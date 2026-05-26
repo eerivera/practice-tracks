@@ -196,8 +196,11 @@ export function App() {
     });
   }
 
-  function handleNormalize(force = false) {
-    if (!songDirs.length || !config) return;
+  // dirs defaults to the songDirs state value.  The re-mix path passes
+  // [selectedSongDir] directly to avoid the React async-state race that would
+  // occur if we called setSongDirs() immediately before this function.
+  function handleNormalize(force = false, dirs = songDirs) {
+    if (!dirs.length || !config) return;
     setSkippedCount(0);
     setShowForceModal(false);
     setForceNextRun(false);
@@ -217,7 +220,7 @@ export function App() {
         setCacheRefetchTick((t) => t + 1);
 
         setSkippedCount(skips);
-        const allSkipped = songDirs.length > 0 && skips >= songDirs.length;
+        const allSkipped = dirs.length > 0 && skips >= dirs.length;
         if (allSkipped) {
           // All songs already had output and were skipped — nothing to mix.
           // Go directly to complete so the UI doesn't grey out indefinitely.
@@ -233,9 +236,20 @@ export function App() {
         }
       }
     );
-    api.normalizeSongs(songDirs, sessionIdRef.current, force, config).catch((err: unknown) => {
+    api.normalizeSongs(dirs, sessionIdRef.current, force, config).catch((err: unknown) => {
       setEvents((prev) => [...prev, { type: 'error', message: err instanceof Error ? err.message : String(err) }]);
     });
+  }
+
+  // Re-mix a previously-extracted song without going through the extraction
+  // flow.  Always forces output regeneration (the user changed their presets)
+  // but still benefits from the normalize cache when the LUFS target is valid.
+  function handleRemix() {
+    if (!selectedSongDir || !config) return;
+    setEvents([]);
+    sessionIdRef.current = crypto.randomUUID();
+    setSongDirs([selectedSongDir]);
+    handleNormalize(true, [selectedSongDir]);
   }
 
   function handleMix() {
@@ -532,6 +546,16 @@ export function App() {
               )}
             </div>
             <Soundboard config={config} stems={currentStems} onChange={handleConfigChange} />
+            {/* Re-mix button — shown in idle phase so the user can regenerate
+                mixes for a previously-extracted song after tweaking presets. */}
+            {phase === 'idle' && (
+              <button
+                onClick={handleRemix}
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
+              >
+                {config.normalize && !normalizeCacheIsValid ? 'Normalize & Mix' : 'Mix Practice Tracks'}
+              </button>
+            )}
           </div>
         )}
 
