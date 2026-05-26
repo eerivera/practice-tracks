@@ -35,6 +35,9 @@ export function App() {
   const [skippedCount, setSkippedCount] = useState(0);
   const [fileCount, setFileCount] = useState(0);
   const [showForceModal, setShowForceModal] = useState(false);
+  // Set to true when the user dismisses the "existing output" warning by clicking
+  // "Overwrite existing". The subsequent Normalize/Mix button run will use force=true.
+  const [forceNextRun, setForceNextRun] = useState(false);
   // null = not yet fetched; { target_lufs: null } = fetched, no cache exists
   const [normalizeCache, setNormalizeCache] = useState<{ target_lufs: number | null } | null>(null);
   // Incrementing this triggers a re-fetch of normalizeCache after normalization.
@@ -197,6 +200,7 @@ export function App() {
     if (!songDirs.length || !config) return;
     setSkippedCount(0);
     setShowForceModal(false);
+    setForceNextRun(false);
     setPhase('normalizing');
 
     const skipToMix = !config.normalize;
@@ -344,7 +348,7 @@ export function App() {
               <>
                 <p className="text-sm text-slate-300 px-1">
                   {existingOutputCount === 1 ? '1 song' : `${existingOutputCount} songs`} already{' '}
-                  {existingOutputCount === 1 ? 'has' : 'have'} mix files. Keep them or regenerate?
+                  {existingOutputCount === 1 ? 'has' : 'have'} mix files. Keep them or overwrite?
                 </p>
                 <div className="flex gap-3">
                   <button
@@ -354,16 +358,16 @@ export function App() {
                     Keep existing
                   </button>
                   <button
-                    onClick={() => { handleNormalize(true); }}
+                    onClick={() => { setForceNextRun(true); setExistingOutputCount(0); }}
                     className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
                   >
-                    Regenerate all
+                    Overwrite existing
                   </button>
                 </div>
               </>
             ) : (
               <button
-                onClick={() => { handleNormalize(); }}
+                onClick={() => { handleNormalize(forceNextRun); }}
                 className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
               >
                 {config?.normalize ? 'Normalize Stems' : 'Mix Practice Tracks'}
