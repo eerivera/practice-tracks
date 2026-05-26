@@ -1,6 +1,26 @@
 import type { Config, StemFile, QueueStatus, SongOutputs } from '../types.js';
 import type { ProcessingApi } from './interface.js';
 
+/** Re-implements the server's physicalSongPath logic for the browser client.
+ *  "songs/<zipName>/output" → "songs/<displayName>/<keyBpm>/output"
+ *  Leaves the path unchanged when no key/BPM suffix is found. */
+const KEY_BPM_RE = /[-_]([A-G][#b]?)[-_]([\d.]+)bpm$/i;
+function resolvePhysicalVariantPath(variantPath: string): string {
+  // Expected form: "songs/<zipName>/<suffix...>"
+  const slashIdx = variantPath.indexOf('/');
+  const secondSlashIdx = variantPath.indexOf('/', slashIdx + 1);
+  if (slashIdx < 0 || secondSlashIdx < 0) return variantPath;
+  const prefix = variantPath.slice(0, slashIdx);          // "songs"
+  const zipName = variantPath.slice(slashIdx + 1, secondSlashIdx); // "SongName-Ab-68.00bpm"
+  const suffix = variantPath.slice(secondSlashIdx);               // "/output"
+  const match = KEY_BPM_RE.exec(zipName);
+  if (!match) return variantPath;
+  const displayName = zipName.slice(0, match.index);
+  const bpm = parseFloat(match[2]).toString();
+  const keyBpm = `${match[1]}-${bpm}bpm`;
+  return `${prefix}/${displayName}/${keyBpm}${suffix}`;
+}
+
 export class ServerApi implements ProcessingApi {
   async extractZips(files: File[], sessionId: string): Promise<void> {
     const form = new FormData();
@@ -98,7 +118,11 @@ export class ServerApi implements ProcessingApi {
   }
 
   getVariantZipUrl(variantPath: string): string {
-    const encoded = btoa(variantPath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    // variantPath is "songs/<zipName>/output" (logical).
+    // Map to the physical two-level path "songs/<displayName>/<keyBpm>/output"
+    // so the server can read the actual files on disk.
+    const physicalPath = resolvePhysicalVariantPath(variantPath);
+    const encoded = btoa(physicalPath).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     return `/api/download-zip/${encoded}`;
   }
 

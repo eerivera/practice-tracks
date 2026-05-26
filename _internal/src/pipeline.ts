@@ -3,7 +3,7 @@ import path from 'path';
 import { createBackend } from './backend/factory.js';
 import { loadConfig } from './config/loader.js';
 import { findStemBus, buildMixInputs } from '../common/mixer.js';
-import { parseSongMetadata, formatOutputSubdir, formatSongDisplayName } from './extractor.js';
+import { formatSongDisplayName, physicalSongPath } from './extractor.js';
 import { consoleEmitter, type Emitter } from '../common/events.js';
 import { type StemFile, type AudioBackend, type Config } from '../common/types.js';
 
@@ -37,8 +37,9 @@ function readNormalizeCacheMeta(songDir: string): NormalizeCacheMeta | null {
 }
 
 // Public accessor used by the HTTP server to expose cache state to the frontend.
+// Accepts the logical songDir; resolves to physical path internally.
 export function getNormalizeCacheMeta(songDir: string): NormalizeCacheMeta | null {
-  return readNormalizeCacheMeta(songDir);
+  return readNormalizeCacheMeta(physicalSongPath(songDir));
 }
 
 // Returns true when every expected normalized stem file exists on disk and the
@@ -121,14 +122,13 @@ function archiveExistingOutput(outputDir: string, emit: Emitter): void {
 }
 
 // Returns true if all expected mix files already exist for the given song directory.
-// Used by the server to inform the client before the normalize step begins.
+// Accepts the logical songDir; resolves to physical path internally.
 export function hasExistingOutput(songDir: string): boolean {
   try {
-    const meta = parseSongMetadata(path.basename(songDir));
-    const subdir = formatOutputSubdir(meta);
-    const outputDir = path.join(songDir, 'output', ...(subdir ? [subdir] : []));
-    const config = loadConfig(songDir);
-    const songTitle = formatSongDisplayName(songDir);
+    const physDir = physicalSongPath(songDir);
+    const outputDir = path.join(physDir, 'output');
+    const config = loadConfig(physDir);
+    const songTitle = formatSongDisplayName(path.basename(songDir));
     const mixNames = config.mixes.map((m) => m.name);
     return outputAlreadyExists(outputDir, songTitle, mixNames, config.output_format);
   } catch {
@@ -137,8 +137,10 @@ export function hasExistingOutput(songDir: string): boolean {
 }
 
 // Lists all StemFile entries for a song directory (reads the stems dir).
+// Accepts the logical songDir; resolves to physical path internally.
 export function listStemFiles(songDir: string, stemsDirName?: string): StemFile[] {
-  const stemsDir = findStemsDir(songDir, stemsDirName);
+  const physDir = physicalSongPath(songDir);
+  const stemsDir = findStemsDir(physDir, stemsDirName);
   return fs
     .readdirSync(stemsDir)
     .filter((f) => AUDIO_EXTENSIONS.test(f))
@@ -159,15 +161,16 @@ export async function runNormalize(
   emit: Emitter = consoleEmitter,
   baseConfig?: Config
 ): Promise<NormalizeResult | null> {
-  const stemsDir = findStemsDir(songDir);
-  const meta = parseSongMetadata(path.basename(songDir));
-  const subdir = formatOutputSubdir(meta);
-  const outputDir = path.join(songDir, 'output', ...(subdir ? [subdir] : []));
+  // songDir is the logical identifier (e.g. "songs/SongName-Ab-68.00bpm").
+  // physDir is the actual on-disk path (e.g. "songs/SongName/Ab-68bpm").
+  const physDir = physicalSongPath(songDir);
+  const stemsDir = findStemsDir(physDir);
+  const outputDir = path.join(physDir, 'output');
   // When called from the web API, baseConfig carries the user's current in-memory
   // config (always up to date). When called from the CLI, baseConfig is absent and
   // we fall back to loadConfig which does the full 3-layer YAML merge.
-  const config = baseConfig ?? loadConfig(songDir);
-  const songTitle = formatSongDisplayName(songDir);
+  const config = baseConfig ?? loadConfig(physDir);
+  const songTitle = formatSongDisplayName(path.basename(songDir));
   const mixNames = config.mixes.map((m) => m.name);
 
   if (!force && outputAlreadyExists(outputDir, songTitle, mixNames, config.output_format)) {
@@ -226,10 +229,10 @@ export async function runNormalize(
     return { songDir, outputDir, normalizedStems: stems, config, backend, pipelineStartMs };
   }
 
-  const cacheDir = normalizedCacheDir(songDir);
+  const cacheDir = normalizedCacheDir(physDir);
 
   // Cache hit — all expected normalized files exist at the current LUFS target.
-  if (isCacheValid(songDir, config.target_lufs, stems)) {
+  if (isCacheValid(physDir, config.target_lufs, stems)) {
     const normalizedStems = stems.map((s) => ({
       ...s,
       path: path.join(cacheDir, `${s.filename}.wav`),
@@ -321,9 +324,7 @@ export async function runPipeline(
 ): Promise<PipelineResult> {
   const normalizeResult = await runNormalize(options.songDir, options.force ?? false, emit);
   if (!normalizeResult) {
-    const meta = parseSongMetadata(path.basename(options.songDir));
-    const subdir = formatOutputSubdir(meta);
-    const outputDir = options.outputDir ?? path.join(options.songDir, 'output', ...(subdir ? [subdir] : []));
+    const outputDir = options.outputDir ?? path.join(options.songDir, 'output');
     return { skipped: true, outputDir, mixFiles: [] };
   }
 

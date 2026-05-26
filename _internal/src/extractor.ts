@@ -14,6 +14,8 @@ export interface ExtractResult {
   songName: string;
   stemCount: number;
   metadata: SongMetadata;
+  /** Formatted key/BPM string, e.g. "Ab-68bpm".  Empty string when not parseable. */
+  keyBpm: string;
 }
 
 // Parses key signature and BPM from a Multitracks zip/folder name.
@@ -36,6 +38,23 @@ export function formatOutputSubdir(meta: SongMetadata): string | null {
   if (!meta.key || !meta.bpmRaw) return null;
   const bpm = parseFloat(meta.bpmRaw).toString(); // "68.00" → "68", "142.5" → "142.5"
   return `${meta.key}-${bpm}bpm`;
+}
+
+/** Maps a logical song directory path to its physical two-level layout path.
+ *
+ *  Logical:  "songs/SongName-Ab-68.00bpm"
+ *  Physical: "songs/SongName/Ab-68bpm"
+ *
+ *  When the zip name has no key/BPM suffix the song directory is left as a
+ *  single-level path ("songs/ManualSong") so manually-organized folders still work.
+ */
+export function physicalSongPath(logicalPath: string): string {
+  const dir = path.dirname(logicalPath);
+  const base = path.basename(logicalPath);
+  const displayName = formatSongDisplayName(base);
+  const keyBpm = formatOutputSubdir(parseSongMetadata(base));
+  if (!keyBpm) return path.join(dir, displayName);
+  return path.join(dir, displayName, keyBpm);
 }
 
 // Extracts a Multitracks.com zip into songs/<song-name>/stems/.
@@ -63,9 +82,19 @@ export function extractMultitrackZip(
 
   const songName = path.basename(zipPath, '.zip');
   const metadata = parseSongMetadata(songName);
-  const songDir = path.join(songsDir, songName);
-  const stemsDir = path.join(songDir, 'stems');
+  const displayName = formatSongDisplayName(songName);
+  const keyBpm = formatOutputSubdir(metadata) ?? '';
+
+  // Physical two-level layout: songs/<displayName>/<keyBpm>/ (e.g. songs/Song/Ab-68bpm/).
+  // Falls back to single-level when the zip has no key/BPM suffix.
+  const variantDir = keyBpm
+    ? path.join(songsDir, displayName, keyBpm)
+    : path.join(songsDir, displayName);
+  const stemsDir = path.join(variantDir, 'stems');
   fs.mkdirSync(stemsDir, { recursive: true });
+
+  // Logical identifier returned to the caller (used as the API key for this song).
+  const songDir = path.join(songsDir, songName);
 
   emit({ type: 'extract_start', total: stemEntries.length });
   const extractStart = Date.now();
@@ -81,7 +110,7 @@ export function extractMultitrackZip(
 
   emit({ type: 'extract_complete', total: stemEntries.length, elapsedMs: Date.now() - extractStart });
 
-  // Copy album art if present
+  // Copy album art into the variant directory if present.
   const albumEntry = Object.entries(entries).find(([name]) => {
     const basename = name.split('/').pop() ?? '';
     return !name.endsWith('/') && /^Album\.jpe?g$/i.test(basename);
@@ -89,8 +118,34 @@ export function extractMultitrackZip(
   if (albumEntry) {
     const [albumPath, albumData] = albumEntry;
     const albumName = albumPath.split('/').pop() ?? albumPath;
-    writeFileSync(path.join(songDir, albumName), albumData);
+    writeFileSync(path.join(variantDir, albumName), albumData);
   }
 
-  return { songDir, songName, stemCount: stemEntries.length, metadata };
+  // Write per-song meta.json in StemStore-compatible format so the static
+  // browser version can read server-extracted stems from a shared folder.
+  const stemsForMeta = stemEntries.map(([entryPath]) => {
+    const entryName = entryPath.split('/').pop() ?? entryPath;
+    return {
+      filename: path.basename(entryName, path.extname(entryName)),
+      ext: path.extname(entryName).slice(1),
+    };
+  });
+  writeFileSync(
+    path.join(variantDir, 'meta.json'),
+    JSON.stringify({ displayName, keyBpm, stems: stemsForMeta }, null, 2),
+  );
+
+  // Maintain a songs-list.json manifest at the songs root so the static
+  // browser version can discover all song directories without iterating.
+  // Entries are the logical zip names (e.g. "SongName-Ab-68.00bpm").
+  const songsListPath = path.join(songsDir, 'songs-list.json');
+  let songList: string[] = [];
+  if (fs.existsSync(songsListPath)) {
+    try { songList = JSON.parse(fs.readFileSync(songsListPath, 'utf-8')) as string[]; } catch { /* ignore corrupt manifest */ }
+  }
+  if (!songList.includes(songName)) {
+    writeFileSync(songsListPath, JSON.stringify([...songList, songName], null, 2));
+  }
+
+  return { songDir, songName, stemCount: stemEntries.length, metadata, keyBpm };
 }

@@ -26,8 +26,9 @@ interface BrowserStem {
 }
 
 interface BrowserSong {
-  songDir: string;   // used as the "songDir" identifier throughout the UI
-  displayName: string;
+  songDir: string;    // full zip name used as the directory identifier, e.g. "Song-Ab-68.00bpm"
+  displayName: string; // human label with key/BPM stripped, e.g. "Song"
+  keyBpm: string;     // formatted key/BPM, e.g. "Ab-68bpm"; empty when not parseable
   stems: BrowserStem[];
 }
 
@@ -41,6 +42,20 @@ interface BrowserSession {
 }
 
 const AUDIO_EXT_RE = /\.(wav|m4a|mp3|aiff?)$/i;
+const KEY_BPM_RE = /[-_]([A-G][#b]?)[-_]([\d.]+)bpm$/i;
+
+/** Parse key and BPM from a zip/folder name, matching the server's formatOutputSubdir format.
+ *  "Who Else - Crowns Down-Ab-68.00bpm" → { displayName: "Who Else - Crowns Down", keyBpm: "Ab-68bpm" }
+ *  Returns the full name as displayName and empty keyBpm when no suffix matches. */
+function parseKeyBpm(name: string): { displayName: string; keyBpm: string } {
+  const match = KEY_BPM_RE.exec(name);
+  if (!match) return { displayName: name, keyBpm: '' };
+  const bpm = parseFloat(match[2]).toString(); // "68.00" → "68", "142.5" → "142.5"
+  return {
+    displayName: name.slice(0, match.index),
+    keyBpm: `${match[1]}-${bpm}bpm`,
+  };
+}
 
 // ── BrowserApi ────────────────────────────────────────────────────────────────
 
@@ -86,6 +101,7 @@ export class BrowserApi implements ProcessingApi {
         this.loadedSongs.set(s.songDir, {
           songDir: s.songDir,
           displayName: s.displayName,
+          keyBpm: s.keyBpm,
           stems: s.stems.map((st) => ({ filename: st.filename, ext: st.ext })),
         });
       }
@@ -136,8 +152,9 @@ export class BrowserApi implements ProcessingApi {
       for (const file of files) {
         const zipData = new Uint8Array(await file.arrayBuffer());
         const entries = unzipSync(zipData);
-        const displayName = file.name.replace(/\.zip$/i, '');
-        const song: BrowserSong = { songDir: displayName, displayName, stems: [] };
+        const zipName = file.name.replace(/\.zip$/i, '');
+        const { displayName, keyBpm } = parseKeyBpm(zipName);
+        const song: BrowserSong = { songDir: zipName, displayName, keyBpm, stems: [] };
 
         for (const [entryPath, data] of Object.entries(entries)) {
           if (entryPath.endsWith('/') || !AUDIO_EXT_RE.test(entryPath)) continue;
@@ -168,6 +185,7 @@ export class BrowserApi implements ProcessingApi {
             this.stemStore.saveSong(
               song.songDir,
               song.displayName,
+              song.keyBpm,
               stemsWithData.map((s) => ({ filename: s.filename, ext: s.ext, data: s.rawData })),
             ).catch((err: unknown) => {
               console.warn('[BrowserApi] Failed to persist stems:', err);
@@ -337,7 +355,8 @@ export class BrowserApi implements ProcessingApi {
 
         const t = Date.now();
         const outputData = await this.backend.mix(bufferInputs, config.output_format);
-        const fileName = `${mixDef.name}.${config.output_format}`;
+        // Match server convention: "<SongTitle> - <mixName>.<ext>"
+        const fileName = `${song.displayName} - ${mixDef.name}.${config.output_format}`;
         const filePath = `${song.songDir}/${fileName}`;
 
         const blob = new Blob([outputData], { type: `audio/${config.output_format}` });
@@ -358,12 +377,12 @@ export class BrowserApi implements ProcessingApi {
 
       // Create a single zip of all mixes for this song so "Download all" works.
       const variantZip = zipSync(variantZipEntries);
-      const variantPath = `songs/${song.songDir}/output/${song.displayName}`;
+      const variantPath = `songs/${song.songDir}/output`;
       session.variantZipUrls.set(variantPath, URL.createObjectURL(new Blob([variantZip], { type: 'application/zip' })));
 
       session.outputs.push({
         songDir: song.songDir,
-        variants: [{ keyBpm: song.displayName, files: songFiles }],
+        variants: [{ keyBpm: song.keyBpm || song.songDir, files: songFiles }],
       });
 
       es?.dispatch({
