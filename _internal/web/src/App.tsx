@@ -468,14 +468,6 @@ export function App() {
                 <span>
                   Cached at {normalizeCache.target_lufs} LUFS — current target is {config.target_lufs} LUFS.
                 </span>
-                {songDirs.length > 0 && !isProcessing && (
-                  <button
-                    onClick={() => { handleNormalize(true); }}
-                    className="ml-auto px-2.5 py-0.5 rounded text-xs bg-amber-700/50 hover:bg-amber-600/50 text-amber-100 shrink-0 transition-colors"
-                  >
-                    Re-normalize
-                  </button>
-                )}
               </div>
             )}
 
