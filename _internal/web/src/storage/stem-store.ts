@@ -106,6 +106,23 @@ export class StemStore {
     );
   }
 
+  // ── Mix output ───────────────────────────────────────────────────────────────
+
+  /**
+   * Persist finished mix files under songs/<songDir>/output/.
+   * Called after mixSongs completes for a song.
+   */
+  async saveOutput(
+    songDir: string,
+    files: { filename: string; data: Uint8Array }[],
+  ): Promise<void> {
+    const dir = await this.getSongDir(songDir, true);
+    const outputDir = await dir.getDirectoryHandle('output', { create: true });
+    for (const file of files) {
+      await writeFile(outputDir, file.filename, file.data);
+    }
+  }
+
   // ── Normalized cache ─────────────────────────────────────────────────────────
 
   async saveNormalized(

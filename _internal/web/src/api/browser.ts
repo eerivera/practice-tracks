@@ -318,6 +318,8 @@ export class BrowserApi implements ProcessingApi {
 
       const songFiles: { name: string; path: string }[] = [];
       const variantZipEntries: Record<string, Uint8Array> = {};
+      // Collected for FSA persistence (only populated when stemStore is set).
+      const outputsToSave: { filename: string; data: Uint8Array }[] = [];
       const startSong = Date.now();
 
       for (const mixDef of config.mixes) {
@@ -342,8 +344,16 @@ export class BrowserApi implements ProcessingApi {
         session.fileBlobUrls.set(filePath, URL.createObjectURL(blob));
         variantZipEntries[fileName] = outputData;
         songFiles.push({ name: fileName, path: filePath });
+        if (this.stemStore) outputsToSave.push({ filename: fileName, data: outputData });
 
         es?.dispatch({ type: 'mix_generated', name: mixDef.name, stems: mixInputs.length, timeMs: Date.now() - t });
+      }
+
+      // Persist mix files to the FSA/OPFS folder so they survive page reloads.
+      if (this.stemStore && outputsToSave.length > 0) {
+        this.stemStore.saveOutput(song.songDir, outputsToSave).catch((err: unknown) => {
+          console.warn('[BrowserApi] Failed to persist mix outputs:', err);
+        });
       }
 
       // Create a single zip of all mixes for this song so "Download all" works.

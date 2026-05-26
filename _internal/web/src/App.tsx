@@ -391,7 +391,7 @@ export function App() {
               <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-400">
                 <span>📁</span>
                 <span>
-                  Stems and normalized audio saved to:{' '}
+                  Stems, normalized audio, and mixes saved to:{' '}
                   <span className="text-slate-200 font-medium">{storageInfo.label}</span>
                 </span>
               </div>
