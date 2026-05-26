@@ -49,4 +49,16 @@ export interface ProcessingApi {
 
   /** Return a URL that triggers download of a generated mix file. */
   getDownloadUrl(filePath: string): string;
+
+  /**
+   * Browser-only.  Returns the current stem storage info (type + human label),
+   * or undefined when running in server mode.
+   */
+  getStorageInfo?(): { type: 'opfs' | 'fsa'; label: string } | null;
+
+  /**
+   * Browser-only.  Show the OS folder picker and switch to FSA storage.
+   * Must be called from a user-gesture handler.  Returns undefined in server mode.
+   */
+  switchToFsa?(): Promise<{ type: 'opfs' | 'fsa'; label: string }>;
 }

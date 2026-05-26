@@ -30,6 +30,7 @@ export function App() {
   // stems[songDir] — populated after extraction and on song select
   const [stemsBySong, setStemsBySong] = useState<Partial<Record<string, StemFile[]>>>({});
   const [selectedSongDir, setSelectedSongDir] = useState<string | null>(null);
+  const [storageInfo, setStorageInfo] = useState<{ type: 'opfs' | 'fsa'; label: string } | null>(null);
   const [availableSongs, setAvailableSongs] = useState<string[]>([]);
   const [existingOutputCount, setExistingOutputCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
@@ -50,12 +51,20 @@ export function App() {
   useEffect(() => {
     api.getConfig().then(setConfig).catch(console.error);
     api.getOutputs().then(setPastOutputs).catch(console.error);
-    // Load previously extracted songs on startup (server mode only — browser
-    // returns empty until a zip is extracted).
+    // Load previously extracted songs on startup.  In server mode this reads
+    // songs/<name>/stems/ dirs.  In browser mode it loads from OPFS/FSA.
     api.listSongs().then((dirs) => {
       setAvailableSongs(dirs);
       if (dirs.length > 0) setSelectedSongDir(dirs[dirs.length - 1]);
     }).catch(console.error);
+    // Browser-only: read storage type after BrowserApi.init() resolves.
+    if (api.getStorageInfo) {
+      // listSongs() awaits initPromise, so by the time it resolves the store
+      // is initialised.  Read storage info after.
+      api.listSongs().then(() => {
+        setStorageInfo(api.getStorageInfo?.() ?? null);
+      }).catch(console.error);
+    }
   }, []);
 
   // Fetch stems whenever the selected song changes.
@@ -353,9 +362,35 @@ export function App() {
       )}
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        <header>
+        <header className="space-y-1">
           <h1 className="text-2xl font-semibold text-white">Practice Tracks</h1>
-          <p className="text-slate-400 text-sm mt-1">Drop your Multitracks zips to generate rehearsal mixes</p>
+          <p className="text-slate-400 text-sm">Drop your Multitracks zips to generate rehearsal mixes</p>
+          {/* Storage badge — browser mode only.  Shows where stems are persisted. */}
+          {storageInfo && (
+            <div className="flex items-center gap-2 pt-0.5">
+              {storageInfo.type === 'opfs' ? (
+                <>
+                  <span className="text-[11px] text-slate-500">
+                    🗄 {storageInfo.label} — may be cleared by the browser
+                  </span>
+                  {api.switchToFsa && (
+                    <button
+                      onClick={() => {
+                        void api.switchToFsa?.().then((info) => { setStorageInfo(info); });
+                      }}
+                      className="text-[11px] text-indigo-400 hover:text-indigo-300 underline transition-colors"
+                    >
+                      Use a folder instead
+                    </button>
+                  )}
+                </>
+              ) : (
+                <span className="text-[11px] text-slate-500">
+                  📁 Stems saved to: {storageInfo.label}
+                </span>
+              )}
+            </div>
+          )}
         </header>
 
         {phase === 'idle' && <DropZone onFiles={handleFilesDropped} />}

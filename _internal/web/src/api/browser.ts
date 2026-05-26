@@ -5,13 +5,23 @@ import type { ProcessingApi } from './interface.js';
 import { FakeEventSource } from './fake-event-source.js';
 import { BrowserWasmBackend } from './browser-backend.js';
 import { DEFAULT_CONFIG } from './embedded-config.js';
+import {
+  createOpfsStore,
+  createFsaStore,
+  restoreFsaStore,
+  isFsaSupported,
+  type StemStore,
+  type StorageInfo,
+} from '../storage/index.js';
 
 // ── Internal session state ────────────────────────────────────────────────────
 
 interface BrowserStem {
   filename: string;
   ext: string;
-  rawData: Uint8Array;
+  /** Raw audio from zip.  May be undefined for stems loaded from storage metadata
+   *  only — will be loaded lazily when processing starts. */
+  rawData?: Uint8Array;
   normalizedData?: Uint8Array;
 }
 
@@ -39,6 +49,65 @@ export class BrowserApi implements ProcessingApi {
   private readonly sessions = new Map<string, BrowserSession>();
   private readonly eventSources = new Map<string, FakeEventSource>();
 
+  // Songs loaded from persistent storage (available across sessions).
+  // Keyed by songDir.  rawData is undefined until processing starts.
+  private readonly loadedSongs = new Map<string, BrowserSong>();
+
+  private stemStore: StemStore | null = null;
+  private storageInfo: StorageInfo | null = null;
+
+  // Resolved once the stem store is initialised and persisted songs are loaded.
+  private readonly initPromise: Promise<void>;
+
+  constructor() {
+    this.initPromise = this.init();
+  }
+
+  private async init(): Promise<void> {
+    try {
+      // Prefer FSA if the user previously picked a folder and permission is
+      // still granted.  Fall back to OPFS silently.
+      let restored: { store: StemStore; info: StorageInfo } | null = null;
+      if (isFsaSupported()) {
+        restored = await restoreFsaStore();
+      }
+
+      if (restored) {
+        this.stemStore = restored.store;
+        this.storageInfo = restored.info;
+      } else {
+        this.stemStore = await createOpfsStore();
+        this.storageInfo = { type: 'opfs', label: 'Browser storage' };
+      }
+
+      // Populate loadedSongs with metadata-only entries (no audio data yet).
+      const stored = await this.stemStore.listSongs();
+      for (const s of stored) {
+        this.loadedSongs.set(s.songDir, {
+          songDir: s.songDir,
+          displayName: s.displayName,
+          stems: s.stems.map((st) => ({ filename: st.filename, ext: st.ext })),
+        });
+      }
+    } catch (err) {
+      // Graceful degradation: run without persistence (in-memory only).
+      console.warn('[BrowserApi] Stem storage unavailable, running in-memory only:', err);
+    }
+  }
+
+  /** Switch to a user-picked FSA folder (call from a click handler). */
+  async switchToFsa(): Promise<StorageInfo> {
+    const result = await createFsaStore();
+    this.stemStore = result.store;
+    this.storageInfo = result.info;
+    return result.info;
+  }
+
+  /** Returns current storage info, or null if not yet initialised. */
+  getStorageInfo(): StorageInfo | null {
+    return this.storageInfo;
+  }
+
   getEventStream(sessionId: string): EventSource {
     const es = new FakeEventSource();
     this.eventSources.set(sessionId, es);
@@ -53,6 +122,7 @@ export class BrowserApi implements ProcessingApi {
   // ── Step 1: extract ─────────────────────────────────────────────────────────
 
   async extractZips(files: File[], sessionId: string): Promise<void> {
+    await this.initPromise;
     const es = this.es(sessionId);
     const session: BrowserSession = {
       songs: [],
@@ -89,6 +159,22 @@ export class BrowserApi implements ProcessingApi {
             total: song.stems.length,
           });
           es?.dispatch({ type: 'extract_complete', total: song.stems.length, elapsedMs: Date.now() - t });
+
+          // Persist raw stems so they survive page reloads.
+          if (this.stemStore) {
+            const stemsWithData = song.stems.filter((s): s is BrowserStem & { rawData: Uint8Array } =>
+              s.rawData !== undefined
+            );
+            this.stemStore.saveSong(
+              song.songDir,
+              song.displayName,
+              stemsWithData.map((s) => ({ filename: s.filename, ext: s.ext, data: s.rawData })),
+            ).catch((err: unknown) => {
+              console.warn('[BrowserApi] Failed to persist stems:', err);
+            });
+            // Also update loadedSongs so re-mix from storage works immediately.
+            this.loadedSongs.set(song.songDir, song);
+          }
         }
       }
 
@@ -101,22 +187,65 @@ export class BrowserApi implements ProcessingApi {
 
   // ── Step 2: normalize ────────────────────────────────────────────────────────
 
-  async normalizeSongs(songDirs: string[], sessionId: string, _force: boolean, config: Config): Promise<void> {
+  async normalizeSongs(songDirs: string[], sessionId: string, force: boolean, config: Config): Promise<void> {
+    await this.initPromise;
     const es = this.es(sessionId);
-    const session = this.sessions.get(sessionId);
-    if (!session) { es?.dispatch({ type: 'error', message: 'Session not found' }); return; }
+
+    // Resolve songs from the current session OR from persisted loadedSongs.
+    let session = this.sessions.get(sessionId);
+    if (!session) {
+      // Re-mix path: no session yet — create one from loaded songs.
+      const fromStorage = songDirs
+        .map((dir) => this.loadedSongs.get(dir))
+        .filter((s): s is BrowserSong => s !== undefined);
+      if (fromStorage.length === 0) {
+        es?.dispatch({ type: 'error', message: 'Session not found and no stored songs match' });
+        return;
+      }
+      session = { songs: fromStorage, outputs: [], fileBlobUrls: new Map(), variantZipUrls: new Map() };
+      this.sessions.set(sessionId, session);
+    }
 
     const songs = session.songs.filter((s) => songDirs.includes(s.songDir));
 
     // When normalization is disabled, pass raw stem data straight to the mix step.
     if (!config.normalize) {
       for (const song of songs) {
+        await this.ensureRawData(song);
         for (const stem of song.stems) {
           stem.normalizedData = stem.rawData;
         }
       }
       es?.dispatch({ type: 'session_complete' });
       return;
+    }
+
+    // Check normalize cache for each song.  If all songs hit, emit normalize_cached.
+    if (!force && this.stemStore) {
+      let allCached = true;
+      for (const song of songs) {
+        const cached = await this.stemStore.loadNormalized(song.songDir, config.target_lufs);
+        if (cached) {
+          for (const stem of song.stems) {
+            const entry = cached.find((c) => c.filename === stem.filename);
+            if (entry) stem.normalizedData = entry.data;
+          }
+        } else {
+          allCached = false;
+          break;
+        }
+      }
+      if (allCached) {
+        const totalStems = songs.reduce((n, s) => n + s.stems.length, 0);
+        es?.dispatch({ type: 'normalize_cached', total: totalStems, targetLufs: config.target_lufs });
+        es?.dispatch({ type: 'session_complete' });
+        return;
+      }
+    }
+
+    // Cache miss (or force) — ensure raw data is loaded, then run FFmpeg.
+    for (const song of songs) {
+      await this.ensureRawData(song);
     }
 
     const totalStems = songs.reduce((n, s) => n + s.stems.length, 0);
@@ -126,6 +255,7 @@ export class BrowserApi implements ProcessingApi {
 
     for (const song of songs) {
       for (const stem of song.stems) {
+        if (!stem.rawData) continue;
         const t = Date.now();
         stem.normalizedData = await this.backend.normalize(stem.rawData, {
           targetLufs: config.target_lufs,
@@ -133,15 +263,42 @@ export class BrowserApi implements ProcessingApi {
         });
         es?.dispatch({ type: 'stem_normalized', name: stem.filename, index: ++idx, total: totalStems, timeMs: Date.now() - t });
       }
+
+      // Persist normalized cache for this song.
+      if (this.stemStore) {
+        const normedStems = song.stems
+          .filter((s): s is BrowserStem & { normalizedData: Uint8Array } => s.normalizedData !== undefined)
+          .map((s) => ({ filename: s.filename, data: s.normalizedData }));
+        this.stemStore.saveNormalized(song.songDir, config.target_lufs, normedStems).catch((err: unknown) => {
+          console.warn('[BrowserApi] Failed to persist normalized cache:', err);
+        });
+      }
     }
 
     es?.dispatch({ type: 'normalize_complete', total: totalStems, elapsedMs: Date.now() - startAll });
     es?.dispatch({ type: 'session_complete' });
   }
 
+  /** Load raw audio from storage for any stem whose rawData isn't in memory. */
+  private async ensureRawData(song: BrowserSong): Promise<void> {
+    const needsLoad = song.stems.some((s) => s.rawData === undefined);
+    if (!needsLoad || !this.stemStore) return;
+    try {
+      const raw = await this.stemStore.loadRaw(song.songDir);
+      for (const stem of song.stems) {
+        if (stem.rawData !== undefined) continue;
+        const stored = raw.find((r) => r.filename === stem.filename);
+        if (stored) stem.rawData = stored.data;
+      }
+    } catch (err) {
+      console.warn(`[BrowserApi] Could not load raw stems for ${song.songDir}:`, err);
+    }
+  }
+
   // ── Step 3: mix ──────────────────────────────────────────────────────────────
 
   async mixSongs(sessionId: string, config: Config): Promise<void> {
+    await this.initPromise;
     const es = this.es(sessionId);
     const session = this.sessions.get(sessionId);
     if (!session) { es?.dispatch({ type: 'error', message: 'Session not found' }); return; }
@@ -237,8 +394,8 @@ export class BrowserApi implements ProcessingApi {
     return Promise.resolve({ mixQueue: [], uploadQueue: [] });
   }
 
-  // In browser mode there is no disk persistence, so outputs never carry over.
   checkOutputs(songDirs: string[]): Promise<{ songDir: string; hasOutput: boolean }[]> {
+    // In browser mode there is no on-disk output, so always report no output.
     return Promise.resolve(songDirs.map((songDir) => ({ songDir, hasOutput: false })));
   }
 
@@ -250,32 +407,39 @@ export class BrowserApi implements ProcessingApi {
     return Promise.resolve([]);
   }
 
-  // In browser mode, "songs" are the songs in the most recent session.
-  listSongs(): Promise<string[]> {
-    for (const session of [...this.sessions.values()].reverse()) {
-      if (session.songs.length > 0) {
-        return Promise.resolve(session.songs.map((s) => s.songDir));
-      }
+  async listSongs(): Promise<string[]> {
+    await this.initPromise;
+    // Songs from the current in-memory sessions + songs loaded from storage.
+    const fromSessions = new Set<string>();
+    for (const session of this.sessions.values()) {
+      for (const s of session.songs) fromSessions.add(s.songDir);
     }
-    return Promise.resolve([]);
+    const all = new Set([...this.loadedSongs.keys(), ...fromSessions]);
+    return [...all];
   }
 
-  // Browser mode has no persistent normalize cache — always reports no cache.
-  getNormalizeCache(_songDir: string): Promise<{ target_lufs: number | null }> {
-    return Promise.resolve({ target_lufs: null });
+  async getNormalizeCache(songDir: string): Promise<{ target_lufs: number | null }> {
+    await this.initPromise;
+    if (!this.stemStore) return { target_lufs: null };
+    const meta = await this.stemStore.getNormalizeMeta(songDir);
+    return { target_lufs: meta?.target_lufs ?? null };
   }
 
-  // Return stem files for a song from the current in-memory session.
-  getStems(songDir: string): Promise<StemFile[]> {
+  async getStems(songDir: string): Promise<StemFile[]> {
+    await this.initPromise;
+    // Check active sessions first.
     for (const session of [...this.sessions.values()].reverse()) {
       const song = session.songs.find((s) => s.songDir === songDir);
       if (song) {
-        return Promise.resolve(
-          song.stems.map((s) => ({ path: `${songDir}/${s.filename}`, filename: s.filename }))
-        );
+        return song.stems.map((s) => ({ path: `${songDir}/${s.filename}`, filename: s.filename }));
       }
     }
-    return Promise.resolve([]);
+    // Fall back to loaded storage songs (metadata-only, no audio data).
+    const stored = this.loadedSongs.get(songDir);
+    if (stored) {
+      return stored.stems.map((s) => ({ path: `${songDir}/${s.filename}`, filename: s.filename }));
+    }
+    return [];
   }
 
   getDownloadUrl(filePath: string): string {
