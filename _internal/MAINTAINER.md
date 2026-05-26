@@ -8,9 +8,24 @@ For end-user instructions, see `README.md`. For Claude's project memory, see `CL
 
 ```bash
 npm install
-npm run check      # type-check + lint + test
-npm run test:watch # re-runs on file save
+npm run check      # type-check + lint + unit tests
+npm run test:watch # unit tests, re-runs on file save
 ```
+
+### E2E tests (one-time browser install required)
+
+```bash
+npm run playwright:install   # downloads Chromium — run once after npm install
+npm run test:e2e             # runs against a freshly built server on port 3000
+npm run test:e2e:ui          # interactive Playwright UI for debugging
+```
+
+`test:e2e` uses `reuseExistingServer` locally — if you already have the server
+running (`npm run web` or `npm run web:dev`), Playwright will reuse it instead of
+starting a new one. In CI the server is started automatically by the test runner.
+
+E2E tests live in `_internal/tests/e2e/`. **Standing rule:** every bug fix must
+include a regression test in that directory that would have caught the bug.
 
 ---
 
