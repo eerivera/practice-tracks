@@ -374,9 +374,13 @@ export function App() {
                   Your stems are stored in browser storage, which{' '}
                   <strong>may be cleared by the browser</strong>.{' '}
                   We recommend{' '}
-                  {api.switchToFsa ? (
+                  {api.switchToFsa && 'showDirectoryPicker' in window ? (
                     <button
-                      onClick={() => { void api.switchToFsa?.().then((info) => { setStorageInfo(info); }); }}
+                      onClick={() => {
+                        void api.switchToFsa?.()
+                          .then((info) => { setStorageInfo(info); })
+                          .catch(() => { /* user cancelled the picker — stay on OPFS */ });
+                      }}
                       className="underline font-medium text-amber-100 hover:text-white transition-colors"
                     >
                       saving to a folder instead
