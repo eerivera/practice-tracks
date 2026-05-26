@@ -1,4 +1,4 @@
-import type { Config, QueueStatus, SongOutputs } from '../types.js';
+import type { Config, StemFile, QueueStatus, SongOutputs } from '../types.js';
 import type { ProcessingApi } from './interface.js';
 
 export class ServerApi implements ProcessingApi {
@@ -69,6 +69,19 @@ export class ServerApi implements ProcessingApi {
     });
     if (!res.ok) throw new Error('Failed to check outputs');
     return res.json() as Promise<{ songDir: string; hasOutput: boolean }[]>;
+  }
+
+  async listSongs(): Promise<string[]> {
+    const res = await fetch('/api/songs');
+    if (!res.ok) throw new Error('Failed to list songs');
+    return res.json() as Promise<string[]>;
+  }
+
+  async getStems(songDir: string): Promise<StemFile[]> {
+    const encoded = btoa(songDir).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const res = await fetch(`/api/stems/${encoded}`);
+    if (!res.ok) throw new Error('Failed to get stems');
+    return res.json() as Promise<StemFile[]>;
   }
 
   async getOutputs(): Promise<SongOutputs[]> {

@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import open from 'open';
 import { zipSync } from 'fflate';
-import { runNormalize, runMix, hasExistingOutput, type NormalizeResult } from './pipeline.js';
+import { runNormalize, runMix, hasExistingOutput, listStemFiles, type NormalizeResult } from './pipeline.js';
 import type { Config } from '../common/types.js';
 import { extractMultitrackZip } from './extractor.js';
 import { loadBaseConfig, saveBaseConfig, resetBaseConfig } from './config/loader.js';
@@ -209,6 +209,33 @@ app.post('/api/mix', async (req: Request, res: Response) => {
   } finally {
     cleanupNormalized(sessionId);
     emit({ type: 'session_complete' });
+  }
+});
+
+// List all song directories that have an extracted stems folder.
+app.get('/api/songs', (_req: Request, res: Response) => {
+  if (!fs.existsSync(SONGS_DIR)) { res.json([]); return; }
+  const songs: string[] = [];
+  for (const name of fs.readdirSync(SONGS_DIR)) {
+    const dir = path.join(SONGS_DIR, name);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    const hasStemsDir = ['stems', 'MultiTracks'].some((d) => fs.existsSync(path.join(dir, d)));
+    if (hasStemsDir) songs.push(dir);
+  }
+  res.json(songs);
+});
+
+// Return the stem files (path + filename) for a given song directory.
+app.get('/api/stems/:encodedSongDir', (req: Request, res: Response) => {
+  const songDir = Buffer.from(req.params.encodedSongDir as string, 'base64url').toString('utf8');
+  if (!path.resolve(songDir).startsWith(SONGS_ROOT)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  try {
+    res.json(listStemFiles(songDir));
+  } catch (err) {
+    res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 

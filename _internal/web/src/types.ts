@@ -1,6 +1,6 @@
 // Common types (shared with Node.js side) are imported from @common.
 // Re-export the ones web components use so they have a single local import path.
-export type { Config, StemCategory, StemRule, MixDefinition } from '@common/types.js';
+export type { Config, StemFile, MixDefinition, BusDefinition } from '@common/types.js';
 export type { ProgressEvent, StemInfo, Emitter } from '@common/events.js';
 
 // ── Web-only types ────────────────────────────────────────────────────────────

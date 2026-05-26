@@ -1,8 +1,7 @@
 export interface StemInfo {
   filename: string;
   ext: string;
-  category: string;
-  index?: number;
+  busName?: string; // undefined if no bus matched
 }
 
 export type ProgressEvent =
@@ -66,8 +65,8 @@ export const consoleEmitter: Emitter = (event) => {
     case 'stems_classified':
       console.log(`Found ${event.total} stems:`);
       for (const s of event.stems) {
-        const idx = s.index !== undefined ? ` [${s.index}]` : '';
-        console.log(`  ${s.filename}.${s.ext.padEnd(4)}  →  ${s.category}${idx}`);
+        const bus = s.busName ? `→  ${s.busName}` : '→  (unmatched)';
+        console.log(`  ${s.filename}.${s.ext.padEnd(4)}  ${bus}`);
       }
       console.log('');
       break;

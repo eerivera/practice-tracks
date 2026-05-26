@@ -1,32 +1,26 @@
-export type StemCategory =
-  | 'click'
-  | 'guide'
-  | 'drums'
-  | 'percussion'
-  | 'bass'
-  | 'synth_bass'
-  | 'keys'
-  | 'piano'
-  | 'organ'
-  | 'electric_guitar'
-  | 'acoustic_guitar'
-  | 'bgvs'
-  | 'choir'
-  | 'lead_vocals'
-  | 'fx'
-  | 'vox_fx'
-  | 'unknown';
+// A stem file on disk (or in-memory in the browser).
+export interface StemFile {
+  path: string;
+  filename: string;
+}
 
-export interface StemRule {
+// A bus groups stems by filename pattern and provides a master gain fader.
+// contains: list of exact filenames or glob patterns ending with '*'.
+// e.g. "EG*" matches "EG 1", "EG 2", "EG 3"; "Bass" matches only "Bass".
+export interface BusDefinition {
+  name: string;
   gain_db: number;
-  mute?: boolean;
+  contains: string[];
 }
 
 export interface MixDefinition {
   name: string;
-  exclude?: StemCategory[];
-  include_only?: StemCategory[];
-  overrides?: Partial<Record<StemCategory, StemRule>>;
+  // Both operate on bus names (not stem filenames).
+  exclude?: string[];
+  include_only?: string[];
+  // Per-mix gain offsets applied on top of the global bus/stem gains.
+  bus_gains?: Record<string, number>;
+  stem_gains?: Record<string, number>;
 }
 
 export interface Config {
@@ -37,15 +31,13 @@ export interface Config {
   output_format: 'm4a' | 'mp3' | 'wav';
   // 0 or undefined → auto (backend.maxConcurrency, capped at 8 for native FFmpeg)
   normalization_concurrency?: number;
-  track_rules: Partial<Record<StemCategory, StemRule>>;
+  // One bus per stem family. Stems not matched by any bus are included at 0 dB
+  // with a warning. Use glob patterns (e.g. "EG*") or exact names.
+  buses: BusDefinition[];
+  // Global per-stem gain defaults (keyed by stem filename). These are the base
+  // values; per-mix stem_gains in MixDefinition override them.
+  stem_gains?: Record<string, number>;
   mixes: MixDefinition[];
-}
-
-export interface ClassifiedStem {
-  path: string;
-  filename: string;
-  category: StemCategory;
-  index?: number;
 }
 
 export interface MixInput {

@@ -5,7 +5,7 @@ import { DropZone } from './components/DropZone.js';
 import { ProgressFeed } from './components/ProgressFeed.js';
 import { Soundboard } from './components/Soundboard.js';
 import { PastMixes } from './components/PastMixes.js';
-import type { Config, ProgressEvent, SongOutputs } from './types.js';
+import type { Config, StemFile, ProgressEvent, SongOutputs } from './types.js';
 
 const api = createApi();
 
@@ -27,6 +27,10 @@ export function App() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [events, setEvents] = useState<ProgressEvent[]>([]);
   const [songDirs, setSongDirs] = useState<string[]>([]);
+  // stems[songDir] — populated after extraction and on song select
+  const [stemsBySong, setStemsBySong] = useState<Partial<Record<string, StemFile[]>>>({});
+  const [selectedSongDir, setSelectedSongDir] = useState<string | null>(null);
+  const [availableSongs, setAvailableSongs] = useState<string[]>([]);
   const [existingOutputCount, setExistingOutputCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
   const [fileCount, setFileCount] = useState(0);
@@ -39,7 +43,24 @@ export function App() {
   useEffect(() => {
     api.getConfig().then(setConfig).catch(console.error);
     api.getOutputs().then(setPastOutputs).catch(console.error);
+    // Load previously extracted songs on startup (server mode only — browser
+    // returns empty until a zip is extracted).
+    api.listSongs().then((dirs) => {
+      setAvailableSongs(dirs);
+      if (dirs.length > 0) setSelectedSongDir(dirs[dirs.length - 1]);
+    }).catch(console.error);
   }, []);
+
+  // Fetch stems whenever the selected song changes.
+  useEffect(() => {
+    if (!selectedSongDir) return;
+    if (stemsBySong[selectedSongDir]) return; // already loaded
+    api.getStems(selectedSongDir).then((s) => {
+      setStemsBySong((prev) => ({ ...prev, [selectedSongDir]: s }));
+    }).catch(console.error);
+  }, [selectedSongDir, stemsBySong]);
+
+  const currentStems: StemFile[] = (selectedSongDir ? stemsBySong[selectedSongDir] : null) ?? [];
 
   // ── Config editing ────────────────────────────────────────────────────────────
 
@@ -132,7 +153,22 @@ export function App() {
       () => {
         setSongDirs(extracted);
         setPhase('extracted');
+
+        // Add newly extracted songs to the available list, select the most recent.
         if (extracted.length > 0) {
+          setAvailableSongs((prev) => {
+            const merged = [...new Set([...prev, ...extracted])];
+            return merged;
+          });
+          setSelectedSongDir(extracted[extracted.length - 1]);
+
+          // Pre-fetch stems for the extracted songs.
+          for (const dir of extracted) {
+            api.getStems(dir).then((s) => {
+              setStemsBySong((prev) => ({ ...prev, [dir]: s }));
+            }).catch(console.error);
+          }
+
           api.checkOutputs(extracted)
             .then((results) => { setExistingOutputCount(results.filter((r) => r.hasOutput).length); })
             .catch(console.error);
@@ -150,8 +186,6 @@ export function App() {
     setShowForceModal(false);
     setPhase('normalizing');
 
-    // When normalization is off the prepare step is instant; skip straight to
-    // mixing so the user never sees an intermediate "normalized" screen.
     const skipToMix = !config.normalize;
 
     let skips = 0;
@@ -211,6 +245,12 @@ export function App() {
   const isProcessing = ['extracting', 'normalizing', 'mixing'].includes(phase);
   const showLog = phase !== 'idle' && phase !== 'files_selected';
   const soundboardDimmed = phase === 'mixing';
+  const showSoundboard = config != null && currentStems.length > 0;
+
+  // Display name for a song directory (strip the full path prefix).
+  function songDisplayName(dir: string): string {
+    return dir.split('/').pop() ?? dir;
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
@@ -334,82 +374,48 @@ export function App() {
           </button>
         )}
 
-        {/* Normalization settings — above the mix panel since it runs first */}
+        {/* Global config controls — normalize settings + config file actions.
+            Shown as soon as config is loaded, above the song-specific mixer.
+            TODO: promote to a proper labelled "Config" section once per-song
+            overrides land and there are two distinct scopes to distinguish. */}
         {config && (
-          <div className="flex items-center gap-3">
-            <label
-              className="flex items-center gap-1.5 text-xs text-slate-400 select-none cursor-pointer"
-              title="When on, each stem is loudness-normalized before mixing. Off by default — use the gain faders to balance stems manually."
-            >
-              <input
-                type="checkbox"
-                className="accent-indigo-500"
-                checked={config.normalize ?? false}
-                onChange={(e) => { handleConfigChange({ ...config, normalize: e.target.checked }); }}
-              />
-              Normalize stems
-            </label>
-            {config.normalize && (
-              <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                <span>Target:</span>
+          <div className={`space-y-2 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
+            {/* Row 1: normalize toggle + LUFS target + Save (right-aligned) */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <label
+                className="flex items-center gap-1.5 text-xs text-slate-400 select-none cursor-pointer"
+                title="When on, each stem is loudness-normalized before mixing. Off by default — use the gain faders to balance stems manually."
+              >
                 <input
-                  type="number"
-                  min={-40}
-                  max={0}
-                  step={1}
-                  value={config.target_lufs}
-                  onChange={(e) => {
-                    const n = parseFloat(e.target.value);
-                    if (!isNaN(n)) {
-                      handleConfigChange({ ...config, target_lufs: Math.max(-40, Math.min(0, Math.round(n))) });
-                    }
-                  }}
-                  className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                  type="checkbox"
+                  className="accent-indigo-500"
+                  checked={config.normalize ?? false}
+                  onChange={(e) => { handleConfigChange({ ...config, normalize: e.target.checked }); }}
                 />
-                <span>LUFS</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Mix presets — always visible once config is loaded; dimmed while mixing */}
-        {config && (
-          <div className={`space-y-3 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">
-                Mix Presets
-                {configDirty && <span className="ml-2 text-amber-400 normal-case font-normal">● unsaved</span>}
-              </h2>
-              <div className="flex gap-2">
-                {/* Hidden file input for upload */}
-                <input
-                  ref={uploadInputRef}
-                  type="file"
-                  accept=".yaml,.yml"
-                  className="hidden"
-                  onChange={handleUploadConfig}
-                />
-                <button
-                  onClick={() => { uploadInputRef.current?.click(); }}
-                  className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                  title="Upload a saved config file"
-                >
-                  Upload config
-                </button>
-                <button
-                  onClick={handleDownloadConfig}
-                  className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                  title="Download current config as YAML"
-                >
-                  Download config
-                </button>
-                <button
-                  onClick={() => { void handleResetConfig(); }}
-                  className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                  title="Restore factory defaults"
-                >
-                  Restore defaults
-                </button>
+                Normalize stems
+              </label>
+              {config.normalize && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <span>Target:</span>
+                  <input
+                    type="number"
+                    min={-40}
+                    max={0}
+                    step={1}
+                    value={config.target_lufs}
+                    onChange={(e) => {
+                      const n = parseFloat(e.target.value);
+                      if (!isNaN(n)) {
+                        handleConfigChange({ ...config, target_lufs: Math.max(-40, Math.min(0, Math.round(n))) });
+                      }
+                    }}
+                    className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                  <span>LUFS</span>
+                </div>
+              )}
+              <div className="ml-auto flex items-center gap-2">
+                {configDirty && <span className="text-[11px] text-amber-400">● unsaved</span>}
                 <button
                   onClick={() => { void handleSaveConfig(); }}
                   className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
@@ -420,11 +426,73 @@ export function App() {
                 </button>
               </div>
             </div>
-            <Soundboard config={config} onChange={handleConfigChange} />
+
+            {/* Row 2: config file actions */}
+            <div className="flex gap-2 flex-wrap">
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept=".yaml,.yml"
+                className="hidden"
+                onChange={handleUploadConfig}
+              />
+              <button
+                onClick={() => { uploadInputRef.current?.click(); }}
+                className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                title="Upload a saved config file"
+              >
+                Upload config
+              </button>
+              <button
+                onClick={handleDownloadConfig}
+                className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                title="Download current config as YAML"
+              >
+                Download config
+              </button>
+              <button
+                onClick={() => { void handleResetConfig(); }}
+                className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                title="Restore factory defaults"
+              >
+                Restore defaults
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Past mixes — always visible; links dimmed while processing */}
+        {/* Mix presets — only shown when a song is loaded */}
+        {showSoundboard && (
+          <div className={`space-y-3 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">Mix Presets</h2>
+              {availableSongs.length > 1 && (
+                <select
+                  value={selectedSongDir ?? ''}
+                  onChange={(e) => { setSelectedSongDir(e.target.value); }}
+                  className="text-xs bg-slate-700 text-slate-300 rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                >
+                  {availableSongs.map((dir) => (
+                    <option key={dir} value={dir}>{songDisplayName(dir)}</option>
+                  ))}
+                </select>
+              )}
+              {availableSongs.length === 1 && selectedSongDir && (
+                <span className="text-xs text-slate-500">{songDisplayName(selectedSongDir)}</span>
+              )}
+            </div>
+            <Soundboard config={config} stems={currentStems} onChange={handleConfigChange} />
+          </div>
+        )}
+
+        {/* When config is loaded but no song selected yet */}
+        {config && !showSoundboard && availableSongs.length === 0 && phase === 'idle' && (
+          <p className="text-sm text-slate-600 text-center py-4">
+            Drop a zip above to load stems and configure your mixes.
+          </p>
+        )}
+
+        {/* Past mixes */}
         <div className={`transition-opacity ${isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
           <PastMixes
             outputs={pastOutputs}

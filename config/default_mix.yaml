@@ -8,111 +8,137 @@
 
 # Whether to loudness-normalize each stem before mixing.
 # false (default) — stems are mixed at their original recorded levels.
-#   Use the gain values in track_rules to balance the stems manually.
+#   Use the gain values in buses and mixes to balance the stems manually.
 # true — each stem is normalized to target_lufs before mixing.
 #   Useful if your stems have wildly inconsistent recording levels.
-#   Note: normalizing many stems to the same LUFS target and then summing
-#   them will increase the overall level significantly. Lower target_lufs
-#   (e.g. -23) to leave headroom when mixing 10–20 stems simultaneously.
 normalize: false
 
 # Number of stems to normalize in parallel (only used when normalize: true).
 # 0 means auto — uses the number of CPU cores on the machine, up to 8.
-# Reduce to 2 or 4 if you see slowdowns on an older or lower-spec Mac.
 normalization_concurrency: 0
 
 # Target loudness per stem when normalize: true.
 # -23 LUFS leaves enough headroom for a full 20-stem mix without clipping.
-# (-14 LUFS is the streaming standard but clips badly with many stems summed.)
 target_lufs: -23
 
 # Format for generated mix files.
 # Options: m4a  mp3  wav
 output_format: m4a
 
-# Per-stem gain adjustments applied after normalization.
-# Stems not listed here get 0 dB (no adjustment).
-track_rules:
-  click:
-    gain_db: -10      # Click is kept quiet so it doesn't dominate
-
-  guide:
-    gain_db: 2        # Guide vocal lifted slightly for rehearsal clarity
-
-  drums:
+# Bus groups — one bus per stem family.
+#
+# How gains work:
+#   effective gain = bus.gain_db + mix.bus_gains[bus_name] + mix.stem_gains[stem_filename]
+#
+# All three layers default to 0 when not set.
+#
+# The "contains" list uses exact stem filenames or glob patterns ending with *.
+# Examples:
+#   "EG*"        matches "EG 1", "EG 2", "EG 3"  (prefix match, case-insensitive)
+#   "Click*"     matches "Click Track", "Click"
+#   "Bass"       matches only "Bass" exactly
+#
+# Stems that don't match any bus are included at 0 dB with a warning.
+# To rename, add, or remove buses: edit the blocks below.
+buses:
+  - name: Click
     gain_db: 0
+    contains: [Click*]
 
-  percussion:
-    gain_db: -2
-
-  bass:
+  - name: Drums
     gain_db: 0
+    contains: [Drums*]
 
-  synth_bass:
-    gain_db: -2
-
-  keys:
-    gain_db: -3
-
-  piano:
-    gain_db: -3
-
-  organ:
-    gain_db: -3
-
-  electric_guitar:
-    gain_db: -4
-
-  acoustic_guitar:
-    gain_db: -4
-
-  bgvs:
-    gain_db: -6
-
-  choir:
-    gain_db: -6
-
-  lead_vocals:
+  - name: Perc
     gain_db: 0
+    contains: [Perc*]
 
-  fx:
-    gain_db: -6
+  - name: Bass
+    gain_db: 0
+    contains: [Bass]
 
-  vox_fx:
-    gain_db: -8
+  - name: Synth Bass
+    gain_db: 0
+    contains: [Synth Bass*]
 
-  unknown:
-    gain_db: 0        # Unrecognized stems pass through at unity gain
+  - name: Keys
+    gain_db: 0
+    contains: [Keys*]
+
+  - name: Piano
+    gain_db: 0
+    contains: [Piano*]
+
+  - name: Organ
+    gain_db: 0
+    contains: [Organ*]
+
+  - name: EG
+    gain_db: 0
+    contains: [EG*]
+
+  - name: AG
+    gain_db: 0
+    contains: [AG*]
+
+  - name: Guide
+    gain_db: 0
+    contains: [Guide*]
+
+  - name: Lead Vox
+    gain_db: 0
+    contains: [Lead*]
+
+  - name: BGVs
+    gain_db: 0
+    contains: [BGV*]
+
+  - name: Choir
+    gain_db: 0
+    contains: [Choir*]
+
+  - name: Vox FX
+    gain_db: 0
+    contains: [Vox FX*]
+
+  - name: FX
+    gain_db: 0
+    contains: [FX*]
+
+# Global per-stem gain defaults (keyed by exact stem filename).
+# These apply across all mixes unless overridden by a mix's stem_gains.
+# Example:
+#   stem_gains:
+#     "EG 2": -2    # EG 2 is always 2 dB quieter than EG 1 and EG 3
+# stem_gains: {}
 
 # Mix definitions — one output file is generated per entry.
-# Each mix can exclude categories, restrict to a category subset (include_only),
-# or override gain values for specific categories within that mix.
+#
+# exclude / include_only: list of bus names (not stem filenames).
+# bus_gains: per-mix offset for a whole bus (on top of bus.gain_db).
+# stem_gains: per-mix offset for a specific stem (on top of bus gain).
+#
+# Effective gain = bus.gain_db + bus_gains[bus] + stem_gains[stem]
 mixes:
   - name: full
-    # All stems included with default gains above
+    # All stems included with default gains
 
   - name: no-click
-    # Same as full but without the click track (good for live run-throughs)
-    exclude: [click]
+    exclude: [Click]
 
   - name: no-guide
-    # Full mix without the guide vocal
-    exclude: [guide]
+    exclude: [Guide]
 
   - name: drummer
     # Click-centric mix for the drummer: rhythm section + quiet guide reference
-    include_only: [click, drums, percussion, bass, synth_bass, guide]
-    overrides:
-      guide:
-        gain_db: -3
+    include_only: [Click, Drums, Perc, Bass, Synth Bass, Guide]
+    bus_gains:
+      Guide: -3
 
   - name: vocalist
     # No click, louder guide and backing vocals for singers
-    exclude: [click]
-    overrides:
-      guide:
-        gain_db: 4
-      bgvs:
-        gain_db: 0
-      choir:
-        gain_db: 0
+    exclude: [Click]
+    bus_gains:
+      Guide: 4
+      BGVs: 0
+      Choir: 0
