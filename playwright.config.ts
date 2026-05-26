@@ -25,5 +25,6 @@ export default defineConfig({
     timeout: 120_000,
     stdout: 'pipe',
     stderr: 'pipe',
+    env: { NO_OPEN: '1' },
   },
 });

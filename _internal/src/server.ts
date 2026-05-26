@@ -362,5 +362,5 @@ app.get('*', (_req: Request, res: Response) => {
 app.listen(PORT, () => {
   const url = `http://localhost:${PORT}`;
   console.log(`Practice Tracks web interface running at ${url}`);
-  void open(url);
+  if (!process.env.NO_OPEN) void open(url);
 });
