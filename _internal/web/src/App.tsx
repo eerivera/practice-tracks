@@ -30,6 +30,7 @@ export function App() {
   // stems[songDir] — populated after extraction and on song select
   const [stemsBySong, setStemsBySong] = useState<Partial<Record<string, StemFile[]>>>({});
   const [selectedSongDir, setSelectedSongDir] = useState<string | null>(null);
+  const [storageInfo, setStorageInfo] = useState<{ type: 'opfs' | 'fsa'; label: string } | null>(null);
   const [availableSongs, setAvailableSongs] = useState<string[]>([]);
   const [existingOutputCount, setExistingOutputCount] = useState(0);
   const [skippedCount, setSkippedCount] = useState(0);
@@ -50,12 +51,20 @@ export function App() {
   useEffect(() => {
     api.getConfig().then(setConfig).catch(console.error);
     api.getOutputs().then(setPastOutputs).catch(console.error);
-    // Load previously extracted songs on startup (server mode only — browser
-    // returns empty until a zip is extracted).
+    // Load previously extracted songs on startup.  In server mode this reads
+    // songs/<name>/stems/ dirs.  In browser mode it loads from OPFS/FSA.
     api.listSongs().then((dirs) => {
       setAvailableSongs(dirs);
       if (dirs.length > 0) setSelectedSongDir(dirs[dirs.length - 1]);
     }).catch(console.error);
+    // Browser-only: read storage type after BrowserApi.init() resolves.
+    if (api.getStorageInfo) {
+      // listSongs() awaits initPromise, so by the time it resolves the store
+      // is initialised.  Read storage info after.
+      api.listSongs().then(() => {
+        setStorageInfo(api.getStorageInfo?.() ?? null);
+      }).catch(console.error);
+    }
   }, []);
 
   // Fetch stems whenever the selected song changes.
@@ -353,9 +362,45 @@ export function App() {
       )}
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        <header>
+        <header className="space-y-1">
           <h1 className="text-2xl font-semibold text-white">Practice Tracks</h1>
-          <p className="text-slate-400 text-sm mt-1">Drop your Multitracks zips to generate rehearsal mixes</p>
+          <p className="text-slate-400 text-sm">Drop your Multitracks zips to generate rehearsal mixes</p>
+          {/* Storage notice — browser mode only.  Shows where stems are persisted. */}
+          {storageInfo && (
+            storageInfo.type === 'opfs' ? (
+              <div className="flex items-start gap-2 mt-2 px-3 py-2.5 bg-amber-900/30 border border-amber-700/40 rounded-lg text-xs text-amber-200">
+                <span className="shrink-0 mt-px">⚠</span>
+                <span>
+                  Your stems are stored in browser storage, which{' '}
+                  <strong>may be cleared by the browser</strong>.{' '}
+                  We recommend{' '}
+                  {api.switchToFsa && 'showDirectoryPicker' in window ? (
+                    <button
+                      onClick={() => {
+                        void api.switchToFsa?.()
+                          .then((info) => { setStorageInfo(info); })
+                          .catch(() => { /* user cancelled the picker — stay on OPFS */ });
+                      }}
+                      className="underline font-medium text-amber-100 hover:text-white transition-colors"
+                    >
+                      saving to a folder instead
+                    </button>
+                  ) : (
+                    'saving to a folder instead (not supported in this browser)'
+                  )}
+                  .
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-400">
+                <span>📁</span>
+                <span>
+                  Stems, normalized audio, and mixes saved to:{' '}
+                  <span className="text-slate-200 font-medium">{storageInfo.label}</span>
+                </span>
+              </div>
+            )
+          )}
         </header>
 
         {phase === 'idle' && <DropZone onFiles={handleFilesDropped} />}
@@ -442,7 +487,7 @@ export function App() {
             overrides land and there are two distinct scopes to distinguish. */}
         {config && (
           <div className={`space-y-2 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
-            {/* Row 1: normalize toggle + LUFS target + Save (right-aligned) */}
+            {/* Row 1: normalize toggle + LUFS target */}
             <div className="flex items-center gap-3 flex-wrap">
               <label
                 className="flex items-center gap-1.5 text-xs text-slate-400 select-none cursor-pointer"
@@ -486,17 +531,6 @@ export function App() {
                   )}
                 </div>
               )}
-              <div className="ml-auto flex items-center gap-2">
-                {configDirty && <span className="text-[11px] text-amber-400">● unsaved</span>}
-                <button
-                  onClick={() => { void handleSaveConfig(); }}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
-                  disabled={!configDirty}
-                  title="Save as new default (persists across sessions)"
-                >
-                  Save
-                </button>
-              </div>
             </div>
 
             {/* LUFS staleness banner — shown when the stored normalization cache was
@@ -513,8 +547,8 @@ export function App() {
               </div>
             )}
 
-            {/* Row 2: config file actions */}
-            <div className="flex gap-2 flex-wrap">
+            {/* Row 2: config file actions + set/restore default */}
+            <div className="flex items-center gap-2 flex-wrap">
               <input
                 ref={uploadInputRef}
                 type="file"
@@ -543,6 +577,15 @@ export function App() {
               >
                 Restore defaults
               </button>
+              <button
+                onClick={() => { void handleSaveConfig(); }}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
+                disabled={!configDirty}
+                title="Save current mix settings as the new default (persists across sessions)"
+              >
+                Set new default
+              </button>
+              {configDirty && <span className="text-[11px] text-amber-400">● unsaved</span>}
             </div>
           </div>
         )}
