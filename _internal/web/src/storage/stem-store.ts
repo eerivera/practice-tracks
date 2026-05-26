@@ -7,7 +7,7 @@
  * Layout under root:
  *   songs-list.json            → string[]  (names of all saved song directories)
  *   songs/<songDir>/
- *     meta.json                → { displayName, stems: [{filename, ext}] }
+ *     meta.json                → { displayName, keyBpm, stems: [{filename, ext}] }
  *     stems/<filename>.<ext>   (raw audio extracted from zip)
  *     normalized/
  *       meta.json              → { target_lufs: number }
@@ -21,6 +21,8 @@
 export interface StoredSong {
   songDir: string;
   displayName: string;
+  /** Formatted key/BPM, e.g. "Ab-68bpm".  Empty string when not parseable. */
+  keyBpm: string;
   stems: { filename: string; ext: string }[];
 }
 
@@ -29,12 +31,27 @@ export class StemStore {
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
+  /** Parse the two-level physical directory components from a logical songDir.
+   *  "SongName-Ab-68.00bpm" → { displayName: "SongName", keyBpm: "Ab-68bpm" }
+   *  Returns an empty keyBpm when the zip name has no key/BPM suffix. */
+  private static readonly KEY_BPM_RE = /[-_]([A-G][#b]?)[-_]([\d.]+)bpm$/i;
+  private static physicalPath(songDir: string): { displayName: string; keyBpm: string } {
+    const match = StemStore.KEY_BPM_RE.exec(songDir);
+    if (!match) return { displayName: songDir, keyBpm: '' };
+    const bpm = parseFloat(match[2]).toString();
+    return { displayName: songDir.slice(0, match.index), keyBpm: `${match[1]}-${bpm}bpm` };
+  }
+
+  /** Navigate (or create) songs/<displayName>/<keyBpm>/ in the OPFS/FSA root. */
   private async getSongDir(
     songDir: string,
     create: boolean,
   ): Promise<FileSystemDirectoryHandle> {
+    const { displayName, keyBpm } = StemStore.physicalPath(songDir);
     const songs = await this.root.getDirectoryHandle('songs', { create });
-    return songs.getDirectoryHandle(songDir, { create });
+    const songNameDir = await songs.getDirectoryHandle(displayName, { create });
+    if (!keyBpm) return songNameDir;
+    return songNameDir.getDirectoryHandle(keyBpm, { create });
   }
 
   // ── Song-list manifest ────────────────────────────────────────────────────────
@@ -61,11 +78,13 @@ export class StemStore {
   async saveSong(
     songDir: string,
     displayName: string,
+    keyBpm: string,
     stems: { filename: string; ext: string; data: Uint8Array }[],
   ): Promise<void> {
     const dir = await this.getSongDir(songDir, true);
     await writeJson(dir, 'meta.json', {
       displayName,
+      keyBpm,
       stems: stems.map((s) => ({ filename: s.filename, ext: s.ext })),
     });
     const stemsDir = await dir.getDirectoryHandle('stems', { create: true });
@@ -81,11 +100,11 @@ export class StemStore {
     for (const songDir of songDirs) {
       try {
         const dir = await this.getSongDir(songDir, false);
-        const meta = await readJson<{ displayName: string; stems: { filename: string; ext: string }[] }>(
+        const meta = await readJson<{ displayName: string; keyBpm?: string; stems: { filename: string; ext: string }[] }>(
           dir,
           'meta.json',
         );
-        results.push({ songDir, displayName: meta.displayName, stems: meta.stems });
+        results.push({ songDir, displayName: meta.displayName, keyBpm: meta.keyBpm ?? '', stems: meta.stems });
       } catch { /* skip corrupt or deleted entries */ }
     }
     return results;

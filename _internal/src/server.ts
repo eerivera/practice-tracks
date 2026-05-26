@@ -7,7 +7,7 @@ import open from 'open';
 import { zipSync } from 'fflate';
 import { runNormalize, runMix, hasExistingOutput, listStemFiles, getNormalizeCacheMeta, type NormalizeResult } from './pipeline.js';
 import type { Config } from '../common/types.js';
-import { extractMultitrackZip } from './extractor.js';
+import { extractMultitrackZip, parseSongMetadata, formatOutputSubdir, formatSongDisplayName, physicalSongPath } from './extractor.js';
 import { loadBaseConfig, saveBaseConfig, resetBaseConfig } from './config/loader.js';
 import { getMixQueue, getUploadQueue } from './queue.js';
 import { consoleEmitter, type Emitter, type ProgressEvent } from '../common/events.js';
@@ -211,14 +211,23 @@ app.post('/api/mix', async (req: Request, res: Response) => {
 });
 
 // List all song directories that have an extracted stems folder.
+// Source of truth is songs-list.json (written by the extractor); each entry is
+// a logical zip name.  The physical two-level path is resolved via physicalSongPath.
 app.get('/api/songs', (_req: Request, res: Response) => {
   if (!fs.existsSync(SONGS_DIR)) { res.json([]); return; }
+  const listPath = path.join(SONGS_DIR, 'songs-list.json');
+  if (!fs.existsSync(listPath)) { res.json([]); return; }
+  let songNames: string[];
+  try {
+    songNames = JSON.parse(fs.readFileSync(listPath, 'utf-8')) as string[];
+  } catch { res.json([]); return; }
+
   const songs: string[] = [];
-  for (const name of fs.readdirSync(SONGS_DIR)) {
-    const dir = path.join(SONGS_DIR, name);
-    if (!fs.statSync(dir).isDirectory()) continue;
-    const hasStemsDir = ['stems', 'MultiTracks'].some((d) => fs.existsSync(path.join(dir, d)));
-    if (hasStemsDir) songs.push(dir);
+  for (const songName of songNames) {
+    const logicalDir = path.join(SONGS_DIR, songName);
+    const physDir = physicalSongPath(logicalDir);
+    const hasStemsDir = ['stems', 'MultiTracks'].some((d) => fs.existsSync(path.join(physDir, d)));
+    if (hasStemsDir) songs.push(logicalDir);
   }
   res.json(songs);
 });
@@ -262,44 +271,45 @@ app.post('/api/check-outputs', (req: Request, res: Response) => {
 });
 
 // List all existing mix files, organised by song → key/BPM variant → mix name.
+// Reads songs-list.json to enumerate songs; each entry is a logical zip name.
+// Physical output files live at songs/<displayName>/<keyBpm>/output/.
 app.get('/api/outputs', (_req: Request, res: Response) => {
-  if (!fs.existsSync(SONGS_DIR)) {
-    res.json([]);
-    return;
+  if (!fs.existsSync(SONGS_DIR)) { res.json([]); return; }
+
+  const listPath = path.join(SONGS_DIR, 'songs-list.json');
+  let songNames: string[] = [];
+  if (fs.existsSync(listPath)) {
+    try { songNames = JSON.parse(fs.readFileSync(listPath, 'utf-8')) as string[]; } catch { /* corrupt manifest */ }
   }
 
   const AUDIO_RE = /\.(m4a|mp3|wav|aiff?)$/i;
-  const result: {
-    songDir: string;
-    variants: { keyBpm: string; files: { name: string; path: string }[] }[];
-  }[] = [];
+  const result: { songDir: string; variants: { keyBpm: string; files: { name: string; path: string }[] }[] }[] = [];
 
-  for (const songName of fs.readdirSync(SONGS_DIR)) {
-    const outputDir = path.join(SONGS_DIR, songName, 'output');
+  for (const songName of songNames) {
+    const logicalDir = path.join(SONGS_DIR, songName);
+    const physDir = physicalSongPath(logicalDir);
+    const outputDir = path.join(physDir, 'output');
     if (!fs.existsSync(outputDir) || !fs.statSync(outputDir).isDirectory()) continue;
 
-    const variants: { keyBpm: string; files: { name: string; path: string }[] }[] = [];
-    const songTitle = songName.replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
+    const songTitle = formatSongDisplayName(songName);
     const filePrefix = `${songTitle} - `;
+    const keyBpm = formatOutputSubdir(parseSongMetadata(songName)) ?? '';
 
-    for (const variantName of fs.readdirSync(outputDir)) {
-      const variantDir = path.join(outputDir, variantName);
-      if (!fs.statSync(variantDir).isDirectory()) continue;
+    const files = fs.readdirSync(outputDir)
+      .filter((f) => {
+        const fPath = path.join(outputDir, f);
+        return AUDIO_RE.test(f) && !fs.statSync(fPath).isDirectory();
+      })
+      .map((f) => {
+        const baseName = path.basename(f, path.extname(f));
+        return {
+          // Strip the "<SongTitle> - " prefix so PastMixes shows just the mix name.
+          name: baseName.startsWith(filePrefix) ? baseName.slice(filePrefix.length) : baseName,
+          path: path.join(physDir, 'output', f),
+        };
+      });
 
-      const files = fs.readdirSync(variantDir)
-        .filter((f) => AUDIO_RE.test(f))
-        .map((f) => {
-          const baseName = path.basename(f, path.extname(f));
-          return {
-            name: baseName.startsWith(filePrefix) ? baseName.slice(filePrefix.length) : baseName,
-            path: path.join(SONGS_DIR, songName, 'output', variantName, f),
-          };
-        });
-
-      if (files.length > 0) variants.push({ keyBpm: variantName, files });
-    }
-
-    if (variants.length > 0) result.push({ songDir: songName, variants });
+    if (files.length > 0) result.push({ songDir: songName, variants: [{ keyBpm, files }] });
   }
 
   res.json(result);
@@ -325,10 +335,12 @@ app.get('/api/download-zip/:encodedVariantDir', (req: Request, res: Response) =>
     if (AUDIO_RE.test(file)) zipFiles[file] = new Uint8Array(fs.readFileSync(path.join(resolved, file)));
   }
 
+  // New layout: songs/<displayName>/<keyBpm>/output
+  // parts[1] = display name, parts[2] = key/BPM variant (or 'output' in legacy flat layout)
   const parts = decoded.split('/');
-  const songPart = (parts[1] ?? '').replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
-  const variantPart = parts[3] ?? '';
-  const displayName = variantPart ? `${songPart} - ${variantPart}` : songPart;
+  const songPart = parts[1] ?? '';
+  const keyBpmPart = parts[2] !== 'output' ? (parts[2] ?? '') : '';
+  const displayName = keyBpmPart ? `${songPart} - ${keyBpmPart}` : songPart;
 
   res.setHeader('Content-Disposition', `attachment; filename="${displayName}.zip"`);
   res.setHeader('Content-Type', 'application/zip');

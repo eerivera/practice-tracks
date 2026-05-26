@@ -37,7 +37,7 @@ export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl, onRemix }
                 <div className="flex items-baseline justify-between mb-2">
                   <p className="text-xs text-slate-500">{variant.keyBpm}</p>
                   <a
-                    href={getVariantZipUrl(`songs/${song.songDir}/output/${variant.keyBpm}`)}
+                    href={getVariantZipUrl(`songs/${song.songDir}/output`)}
                     download={`${songDisplayName(song.songDir)} - ${variant.keyBpm}.zip`}
                     className="flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-700 hover:bg-slate-600 rounded-md text-xs text-slate-300 hover:text-white transition-colors group"
                   >
