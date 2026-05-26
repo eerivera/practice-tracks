@@ -1,8 +1,8 @@
 /**
- * Regression tests for bugs fixed in PR #14 (normalized stem cache).
+ * Regression tests — one test per bug, named after the broken behaviour.
+ * A failing test here means a specific broken behaviour has been reintroduced.
  *
- * Each test is named after the bug it guards against.  A failing test here
- * means a specific broken behaviour has been reintroduced.
+ * PR references are inline above each test group.
  */
 import { test, expect } from '@playwright/test';
 import { setupBaseMocks, mockSseSequence } from './helpers.js';
@@ -148,4 +148,76 @@ test('amber banner disappears when LUFS target is updated to match cache', async
   await expect(
     page.getByText('Cached: -23 LUFS', { exact: false })
   ).toBeVisible();
+});
+
+// ── Bug: Re-mix button ignores normalize cache (PR #19) ───────────────────────
+// handleRemix previously set normalizeCache=null then relied on a useEffect to
+// fetch the cache asynchronously.  Because the 'extracted' phase rendered before
+// the fetch resolved, normalizeCacheIsValid was always false → button always
+// showed "Normalize Stems" even when the cache was valid.
+// Fix: handleRemix now awaits the cache fetch before setting phase.
+
+const REMIX_SONG_DIR = 'test-song';
+const REMIX_SONG_PATH = `songs/${REMIX_SONG_DIR}`;
+
+// Helper: mock a song with outputs so the Past Mixes Re-mix button is visible.
+async function setupRemixScene(
+  page: Parameters<typeof setupBaseMocks>[0],
+  configOverride: Record<string, unknown>,
+  cacheTargetLufs: number | null,
+): Promise<void> {
+  await setupBaseMocks(page, configOverride);
+  // Song exists on disk (so handleRemix can find a full path).
+  await page.route('/api/songs', (r) => r.fulfill({ json: [REMIX_SONG_PATH] }));
+  // Song has prior output so it appears in Past Mixes with a Re-mix button.
+  await page.route('/api/outputs', (r) =>
+    r.fulfill({
+      json: [{
+        songDir: REMIX_SONG_DIR,
+        variants: [{ keyBpm: 'Ab-68bpm', files: [{ name: 'full', path: `${REMIX_SONG_PATH}/output/Ab-68bpm/full.m4a` }] }],
+      }],
+    })
+  );
+  // Normalize cache for this song (overrides the null default in setupBaseMocks).
+  await page.route('/api/normalize-cache/**', (r) =>
+    r.fulfill({ json: { target_lufs: cacheTargetLufs } })
+  );
+}
+
+test('Re-mix with valid cache shows "Mix Practice Tracks" immediately', async ({ page }) => {
+  // normalize=true, config target=-23, cache also at -23 → cache is valid.
+  await setupRemixScene(page, { normalize: true, target_lufs: -23 }, -23);
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Re-mix' }).click();
+
+  // Button must read "Mix Practice Tracks" — not "Normalize Stems" — because the
+  // cache is valid and no FFmpeg run is needed.
+  await expect(
+    page.getByRole('button', { name: 'Mix Practice Tracks' })
+  ).toBeVisible({ timeout: 5000 });
+});
+
+test('Re-mix with stale cache shows "Normalize Stems"', async ({ page }) => {
+  // normalize=true, config target=-20, cache at -23 → cache is stale.
+  await setupRemixScene(page, { normalize: true, target_lufs: -20 }, -23);
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Re-mix' }).click();
+
+  await expect(
+    page.getByRole('button', { name: 'Normalize Stems' })
+  ).toBeVisible({ timeout: 5000 });
+});
+
+test('Re-mix with normalize disabled shows "Mix Practice Tracks"', async ({ page }) => {
+  // normalize=false → cache is irrelevant, always goes straight to mix.
+  await setupRemixScene(page, { normalize: false }, null);
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'Re-mix' }).click();
+
+  await expect(
+    page.getByRole('button', { name: 'Mix Practice Tracks' })
+  ).toBeVisible({ timeout: 5000 });
 });

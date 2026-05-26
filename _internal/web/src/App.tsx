@@ -245,15 +245,26 @@ export function App() {
   // Sets phase to 'extracted' so the user sees the console log and the
   // Normalize / Mix button, then clicks when ready.
   // songDirName is the bare folder name from PastMixes (e.g. "Who Else - Crowns Down").
-  function handleRemix(songDirName: string) {
+  //
+  // This MUST be async: we await the normalize-cache fetch before setting phase
+  // so that normalizeCacheIsValid is correct when the 'extracted' button renders.
+  // (Setting normalizeCache=null then relying on the useEffect would leave it null
+  // at first render, causing the button to always show "Normalize Stems".)
+  async function handleRemix(songDirName: string): Promise<void> {
     const fullPath = availableSongs.find(
       (d) => d === songDirName || d.endsWith(`/${songDirName}`),
     );
     if (!fullPath) return; // stems not on disk
     // Strip key/bpm suffix for display: "Song Name-Ab-68.00bpm" → "Song Name"
     const displayName = songDirName.replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
+    // Fetch the cache for this song before transitioning so the button label
+    // is immediately correct (valid cache → "Mix Practice Tracks", stale → "Normalize Stems").
+    const cache = await api.getNormalizeCache(fullPath).catch(
+      (): { target_lufs: number | null } => ({ target_lufs: null }),
+    );
+    sessionIdRef.current = crypto.randomUUID();
     setEvents([{ type: 'info', message: `Loaded: ${displayName}` }]);
-    setNormalizeCache(null);
+    setNormalizeCache(cache);
     setSelectedSongDir(fullPath);
     setSongDirs([fullPath]);
     setExistingOutputCount(0);  // skip keep/overwrite prompt — user chose Re-mix
@@ -573,7 +584,7 @@ export function App() {
             outputs={pastOutputs}
             getDownloadUrl={(p) => api.getDownloadUrl(p)}
             getVariantZipUrl={(p) => api.getVariantZipUrl(p)}
-            onRemix={handleRemix}
+            onRemix={(name) => { void handleRemix(name); }}
           />
         </div>
       </div>
