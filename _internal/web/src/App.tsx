@@ -35,6 +35,13 @@ export function App() {
   const [skippedCount, setSkippedCount] = useState(0);
   const [fileCount, setFileCount] = useState(0);
   const [showForceModal, setShowForceModal] = useState(false);
+  // Set to true when the user dismisses the "existing output" warning by clicking
+  // "Overwrite existing". The subsequent Normalize/Mix button run will use force=true.
+  const [forceNextRun, setForceNextRun] = useState(false);
+  // null = not yet fetched; { target_lufs: null } = fetched, no cache exists
+  const [normalizeCache, setNormalizeCache] = useState<{ target_lufs: number | null } | null>(null);
+  // Incrementing this triggers a re-fetch of normalizeCache after normalization.
+  const [cacheRefetchTick, setCacheRefetchTick] = useState(0);
   const filesRef = useRef<File[] | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string>(crypto.randomUUID());
@@ -59,6 +66,15 @@ export function App() {
       setStemsBySong((prev) => ({ ...prev, [selectedSongDir]: s }));
     }).catch(console.error);
   }, [selectedSongDir, stemsBySong]);
+
+  // Fetch normalize cache metadata whenever the selected song changes or after
+  // a normalization run completes (cacheRefetchTick increments then).
+  useEffect(() => {
+    if (!selectedSongDir) return;
+    api.getNormalizeCache(selectedSongDir)
+      .then((result) => { setNormalizeCache(result); })
+      .catch(() => { setNormalizeCache({ target_lufs: null }); });
+  }, [selectedSongDir, cacheRefetchTick]);
 
   const currentStems: StemFile[] = (selectedSongDir ? stemsBySong[selectedSongDir] : null) ?? [];
 
@@ -184,16 +200,30 @@ export function App() {
     if (!songDirs.length || !config) return;
     setSkippedCount(0);
     setShowForceModal(false);
+    setForceNextRun(false);
     setPhase('normalizing');
 
-    const skipToMix = !config.normalize;
+    // Skip directly to mix when normalize is off, OR when the cache already
+    // covers the current LUFS target (the pipeline will emit normalize_cached
+    // and return immediately — no need to pause at the normalized phase).
+    const skipToMix = !config.normalize || normalizeCacheIsValid;
 
     let skips = 0;
     openSse(
       (event) => { if (event.type === 'skip') skips++; },
       () => {
+        // Re-fetch normalize cache so the LUFS staleness banner reflects the
+        // result of this normalization run immediately.
+        setCacheRefetchTick((t) => t + 1);
+
         setSkippedCount(skips);
-        if (skips > 0) {
+        const allSkipped = songDirs.length > 0 && skips >= songDirs.length;
+        if (allSkipped) {
+          // All songs already had output and were skipped — nothing to mix.
+          // Go directly to complete so the UI doesn't grey out indefinitely.
+          setPhase('complete');
+          api.getOutputs().then(setPastOutputs).catch(console.error);
+        } else if (skips > 0) {
           setPhase('normalized');
           setShowForceModal(true);
         } else if (skipToMix) {
@@ -243,6 +273,9 @@ export function App() {
   // ── Derived UI state ─────────────────────────────────────────────────────────
 
   const isProcessing = ['extracting', 'normalizing', 'mixing'].includes(phase);
+  // True when the on-disk normalize cache exists and already matches the active
+  // LUFS target — no FFmpeg run needed, safe to go straight to mix.
+  const normalizeCacheIsValid = config !== null && normalizeCache !== null && normalizeCache.target_lufs === config.target_lufs;
   const showLog = phase !== 'idle' && phase !== 'files_selected';
   const soundboardDimmed = phase === 'mixing';
   const showSoundboard = config != null && currentStems.length > 0;
@@ -317,18 +350,11 @@ export function App() {
 
         {phase === 'extracted' && (
           <div className="space-y-3">
-            {config?.normalize && (
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-slate-800 rounded-lg text-sm text-slate-400">
-                <span className="mt-px shrink-0">ℹ</span>
-                <span>Stems must be re-normalized each session — caching is coming soon.</span>
-              </div>
-            )}
-
             {existingOutputCount > 0 ? (
               <>
                 <p className="text-sm text-slate-300 px-1">
                   {existingOutputCount === 1 ? '1 song' : `${existingOutputCount} songs`} already{' '}
-                  {existingOutputCount === 1 ? 'has' : 'have'} mix files. Keep them or regenerate?
+                  {existingOutputCount === 1 ? 'has' : 'have'} mix files. Keep them or overwrite?
                 </p>
                 <div className="flex gap-3">
                   <button
@@ -338,19 +364,19 @@ export function App() {
                     Keep existing
                   </button>
                   <button
-                    onClick={() => { handleNormalize(true); }}
+                    onClick={() => { setForceNextRun(true); setExistingOutputCount(0); }}
                     className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
                   >
-                    Regenerate all
+                    Overwrite existing
                   </button>
                 </div>
               </>
             ) : (
               <button
-                onClick={() => { handleNormalize(); }}
+                onClick={() => { handleNormalize(forceNextRun); }}
                 className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
               >
-                {config?.normalize ? 'Normalize Stems' : 'Mix Practice Tracks'}
+                {config?.normalize && !normalizeCacheIsValid ? 'Normalize Stems' : 'Mix Practice Tracks'}
               </button>
             )}
           </div>
@@ -395,23 +421,33 @@ export function App() {
                 Normalize stems
               </label>
               {config.normalize && (
-                <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <span>Target:</span>
-                  <input
-                    type="number"
-                    min={-40}
-                    max={0}
-                    step={1}
-                    value={config.target_lufs}
-                    onChange={(e) => {
-                      const n = parseFloat(e.target.value);
-                      if (!isNaN(n)) {
-                        handleConfigChange({ ...config, target_lufs: Math.max(-40, Math.min(0, Math.round(n))) });
-                      }
-                    }}
-                    className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
-                  />
-                  <span>LUFS</span>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <span>Target:</span>
+                    <input
+                      type="number"
+                      min={-40}
+                      max={0}
+                      step={1}
+                      value={config.target_lufs}
+                      onChange={(e) => {
+                        const n = parseFloat(e.target.value);
+                        if (!isNaN(n)) {
+                          handleConfigChange({ ...config, target_lufs: Math.max(-40, Math.min(0, Math.round(n))) });
+                        }
+                      }}
+                      className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                    />
+                    <span>LUFS</span>
+                  </div>
+                  {normalizeCache?.target_lufs !== null && normalizeCache !== null && (
+                    <span
+                      className={`text-[11px] ${normalizeCache.target_lufs === config.target_lufs ? 'text-emerald-500' : 'text-slate-500'}`}
+                      title={`Stems for this song were last normalized at ${normalizeCache.target_lufs} LUFS`}
+                    >
+                      Cached: {normalizeCache.target_lufs} LUFS
+                    </span>
+                  )}
                 </div>
               )}
               <div className="ml-auto flex items-center gap-2">
@@ -426,6 +462,20 @@ export function App() {
                 </button>
               </div>
             </div>
+
+            {/* LUFS staleness banner — shown when the stored normalization cache was
+                built with a different target than the one currently in config. */}
+            {config.normalize &&
+              normalizeCache !== null &&
+              normalizeCache.target_lufs !== null &&
+              normalizeCache.target_lufs !== config.target_lufs && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-900/30 border border-amber-700/40 rounded-lg text-xs text-amber-300">
+                <span className="shrink-0">⚠</span>
+                <span>
+                  Cached at {normalizeCache.target_lufs} LUFS — current target is {config.target_lufs} LUFS.
+                </span>
+              </div>
+            )}
 
             {/* Row 2: config file actions */}
             <div className="flex gap-2 flex-wrap">

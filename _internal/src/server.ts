@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import open from 'open';
 import { zipSync } from 'fflate';
-import { runNormalize, runMix, hasExistingOutput, listStemFiles, type NormalizeResult } from './pipeline.js';
+import { runNormalize, runMix, hasExistingOutput, listStemFiles, getNormalizeCacheMeta, type NormalizeResult } from './pipeline.js';
 import type { Config } from '../common/types.js';
 import { extractMultitrackZip } from './extractor.js';
 import { loadBaseConfig, saveBaseConfig, resetBaseConfig } from './config/loader.js';
@@ -34,15 +34,13 @@ function sseEmitter(sessionId: string): Emitter {
 
 // ─── Normalize result registry ────────────────────────────────────────────────
 // Holds in-memory normalization output between the /api/normalize and /api/mix
-// requests for a given session. Cleaned up in /api/mix (success or error).
+// requests for a given session. Cleared in /api/mix (success or error).
+// Normalized stems are persisted to disk (songs/<name>/normalized/) so no
+// temporary files need to be cleaned up here.
 
 const normalizedResults = new Map<string, NormalizeResult[]>();
 
-function cleanupNormalized(sessionId: string): void {
-  const results = normalizedResults.get(sessionId) ?? [];
-  for (const r of results) {
-    if (r.tmpDir) fs.rmSync(r.tmpDir, { recursive: true, force: true });
-  }
+function clearNormalizedResults(sessionId: string): void {
   normalizedResults.delete(sessionId);
 }
 
@@ -158,7 +156,7 @@ app.post('/api/normalize', async (req: Request, res: Response) => {
   }
 
   // Clean up any stale results from a previous normalize for this session
-  cleanupNormalized(sessionId);
+  clearNormalizedResults(sessionId);
 
   res.json({ status: 'normalizing', count: songDirs.length });
 
@@ -207,7 +205,7 @@ app.post('/api/mix', async (req: Request, res: Response) => {
       }
     }
   } finally {
-    cleanupNormalized(sessionId);
+    clearNormalizedResults(sessionId);
     emit({ type: 'session_complete' });
   }
 });
@@ -237,6 +235,19 @@ app.get('/api/stems/:encodedSongDir', (req: Request, res: Response) => {
   } catch (err) {
     res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
   }
+});
+
+// Return the normalize cache metadata (target LUFS) for a song directory.
+// The client uses this to detect when the cached normalization target no longer
+// matches the active config so it can prompt the user to re-normalize.
+app.get('/api/normalize-cache/:encodedSongDir', (req: Request, res: Response) => {
+  const songDir = Buffer.from(req.params.encodedSongDir as string, 'base64url').toString('utf8');
+  if (!path.resolve(songDir).startsWith(SONGS_ROOT)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  const meta = getNormalizeCacheMeta(songDir);
+  res.json({ target_lufs: meta?.target_lufs ?? null });
 });
 
 // Check whether output files already exist for a set of song directories.
