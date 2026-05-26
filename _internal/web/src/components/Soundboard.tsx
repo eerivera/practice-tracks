@@ -133,29 +133,28 @@ function BusChannel({
     onGainChange(clampDb(MIN_DB + pct * (MAX_DB - MIN_DB)));
   }
 
-  const prevGain = displayGainDb; // stored in mute toggle below
-
   return (
     <div className={`flex flex-col items-center gap-1.5 w-14 select-none ${unmatched ? 'opacity-40' : ''}`}>
-      {/* Unmatched warning badge */}
-      {unmatched && (
-        <div
-          className="text-[9px] text-amber-400 font-bold leading-none"
-          title="No stems in this song match this bus. Check your bus config or stem filenames."
-        >
-          ⚠
-        </div>
-      )}
-      {!unmatched && (
-        <GainLabel
-          gainDb={displayGainDb}
-          active={active}
-          muted={muted}
-          excluded={false}
-          onEdit={onGainChange}
-        />
-      )}
-      {unmatched && <div className="h-[18px]" />}
+      {/* Fixed-height zone above fader — same height regardless of matched/unmatched
+          so all fader tracks start at the same vertical position. */}
+      <div className="h-[22px] flex items-center justify-center w-full">
+        {unmatched ? (
+          <div
+            className="text-[9px] text-amber-400 font-bold leading-none"
+            title="No stems in this song match this bus. Check your bus config or stem filenames."
+          >
+            ⚠
+          </div>
+        ) : (
+          <GainLabel
+            gainDb={displayGainDb}
+            active={active}
+            muted={muted}
+            excluded={false}
+            onEdit={onGainChange}
+          />
+        )}
+      </div>
 
       <FaderTrack
         gainDb={isMuted(displayGainDb) ? 0 : displayGainDb}
@@ -171,31 +170,33 @@ function BusChannel({
         {name}
       </span>
 
-      {/* Mute button (only when stems present) */}
-      {!unmatched && (
-        <button
-          className={`text-[10px] w-6 h-5 rounded font-bold transition-colors ${muted ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
-          onClick={() => { onMuteToggle(); void prevGain; }}
-          title={muted ? 'Unmute bus' : 'Mute bus'}
-        >
-          M
-        </button>
-      )}
+      {/* Fixed-height mute slot — always the same height whether button is present or not */}
+      <div className="h-5 flex items-center justify-center">
+        {!unmatched && (
+          <button
+            className={`text-[10px] w-6 h-5 rounded font-bold transition-colors ${muted ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+            onClick={onMuteToggle}
+            title={muted ? 'Unmute bus' : 'Mute bus'}
+          >
+            M
+          </button>
+        )}
+      </div>
 
-      {/* Expand toggle / spacer */}
-      {canExpand ? (
-        <button
-          onClick={onToggleExpand}
-          className={`text-sm w-7 h-6 rounded transition-colors ${
-            expanded ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-          }`}
-          title={expanded ? 'Collapse' : 'Show individual stems'}
-        >
-          {expanded ? '▲' : '▼'}
-        </button>
-      ) : (
-        <div className={unmatched ? 'h-0' : 'h-6'} />
-      )}
+      {/* Fixed-height expand slot — always the same height whether button is present or not */}
+      <div className="h-6 flex items-center justify-center">
+        {canExpand && (
+          <button
+            onClick={onToggleExpand}
+            className={`text-sm w-7 h-6 rounded transition-colors ${
+              expanded ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+            }`}
+            title={expanded ? 'Collapse' : 'Show individual stems'}
+          >
+            {expanded ? '▲' : '▼'}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -442,7 +443,7 @@ export function Soundboard({ config, stems, onChange }: Props) {
       <div className="bg-slate-800 rounded-xl p-4 space-y-4">
         {/* Primary row: one channel per bus */}
         <div className="overflow-x-auto">
-          <div className="flex gap-4 min-w-max items-end">
+          <div className="flex gap-4 min-w-max items-start">
             {busRows.map(({ bus, busIdx, unmatched, canExpand, displayGainDb, muted, allExcluded }) => (
               <BusChannel
                 key={bus.name}
@@ -470,14 +471,17 @@ export function Soundboard({ config, stems, onChange }: Props) {
                   const stemMuted = isMuted(stemMixGain);
                   return (
                     <div key={stem.filename} className="flex flex-col items-center gap-1.5 w-14 select-none">
-                      <div className="text-[9px] text-amber-400 font-bold" title="Not assigned to any bus">⚠</div>
-                      <GainLabel
-                        gainDb={stemMixGain}
-                        active={!stemMuted}
-                        muted={stemMuted}
-                        excluded={false}
-                        onEdit={(db) => { setStemGainForMix(stem.filename, db); }}
-                      />
+                      {/* Fixed-height pre-fader zone — matches BusChannel for row alignment */}
+                      <div className="h-[22px] flex items-center justify-center w-full gap-1">
+                        <span className="text-[9px] text-amber-400 font-bold leading-none" title="Not assigned to any bus">⚠</span>
+                        <GainLabel
+                          gainDb={stemMixGain}
+                          active={!stemMuted}
+                          muted={stemMuted}
+                          excluded={false}
+                          onEdit={(db) => { setStemGainForMix(stem.filename, db); }}
+                        />
+                      </div>
                       <FaderTrack
                         gainDb={stemMuted ? 0 : stemMixGain}
                         active={!stemMuted}
@@ -491,13 +495,18 @@ export function Soundboard({ config, stems, onChange }: Props) {
                       <span className="text-[11px] text-amber-500 text-center leading-tight w-14 break-words px-0.5" title="Not assigned to any bus">
                         {stem.filename}
                       </span>
-                      <button
-                        className={`text-[10px] w-6 h-5 rounded font-bold transition-colors ${stemMuted ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
-                        onClick={() => { toggleStemMute(stem.filename, stemMixGain); }}
-                        title={stemMuted ? 'Unmute' : 'Mute'}
-                      >
-                        M
-                      </button>
+                      {/* Fixed-height mute slot */}
+                      <div className="h-5 flex items-center justify-center">
+                        <button
+                          className={`text-[10px] w-6 h-5 rounded font-bold transition-colors ${stemMuted ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+                          onClick={() => { toggleStemMute(stem.filename, stemMixGain); }}
+                          title={stemMuted ? 'Unmute' : 'Mute'}
+                        >
+                          M
+                        </button>
+                      </div>
+                      {/* Fixed-height expand slot (empty — unmatched stems can't expand) */}
+                      <div className="h-6" />
                     </div>
                   );
                 })}

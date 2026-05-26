@@ -415,8 +415,9 @@ export function App() {
         {/* Mix presets — only shown when a song is loaded */}
         {showSoundboard && (
           <div className={`space-y-3 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
-            <div className="flex items-center justify-between flex-wrap gap-y-2">
-              <div className="flex items-center gap-3">
+            <div className="space-y-2">
+              {/* Row 1: section title + song selector + save indicator */}
+              <div className="flex items-center gap-3 flex-wrap">
                 <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">
                   Mix Presets
                   {configDirty && <span className="ml-2 text-amber-400 normal-case font-normal">● unsaved</span>}
@@ -436,9 +437,20 @@ export function App() {
                 {availableSongs.length === 1 && selectedSongDir && (
                   <span className="text-xs text-slate-500">{songDisplayName(selectedSongDir)}</span>
                 )}
+                <div className="ml-auto">
+                  <button
+                    onClick={() => { void handleSaveConfig(); }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
+                    disabled={!configDirty}
+                    title="Save as new default (persists across sessions)"
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
 
-              <div className="flex gap-2">
+              {/* Row 2: config file actions */}
+              <div className="flex gap-2 flex-wrap">
                 <input
                   ref={uploadInputRef}
                   type="file"
@@ -466,14 +478,6 @@ export function App() {
                   title="Restore factory defaults"
                 >
                   Restore defaults
-                </button>
-                <button
-                  onClick={() => { void handleSaveConfig(); }}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
-                  disabled={!configDirty}
-                  title="Save as new default (persists across sessions)"
-                >
-                  Save
                 </button>
               </div>
             </div>
