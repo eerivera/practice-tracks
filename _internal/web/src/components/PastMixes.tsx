@@ -4,6 +4,7 @@ interface Props {
   outputs: SongOutputs[];
   getDownloadUrl: (path: string) => string;
   getVariantZipUrl: (variantPath: string) => string;
+  onRemix?: (songDir: string) => void;
 }
 
 function songDisplayName(songDir: string): string {
@@ -11,7 +12,7 @@ function songDisplayName(songDir: string): string {
   return songDir.replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
 }
 
-export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl }: Props) {
+export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl, onRemix }: Props) {
   if (outputs.length === 0) return null;
 
   return (
@@ -20,7 +21,17 @@ export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl }: Props) 
       <div className="space-y-3">
         {outputs.map((song) => (
           <div key={song.songDir} className="bg-slate-800 rounded-xl p-4 space-y-4">
-            <h3 className="font-medium text-white">{songDisplayName(song.songDir)}</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium text-white">{songDisplayName(song.songDir)}</h3>
+              {onRemix && (
+                <button
+                  onClick={() => { onRemix(song.songDir); }}
+                  className="px-2.5 py-1 rounded-md text-xs bg-indigo-700 hover:bg-indigo-600 text-white transition-colors"
+                >
+                  Re-mix
+                </button>
+              )}
+            </div>
             {song.variants.map((variant) => (
               <div key={variant.keyBpm}>
                 <div className="flex items-baseline justify-between mb-2">

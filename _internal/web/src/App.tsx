@@ -242,14 +242,22 @@ export function App() {
   }
 
   // Re-mix a previously-extracted song without going through the extraction
-  // flow.  Always forces output regeneration (the user changed their presets)
-  // but still benefits from the normalize cache when the LUFS target is valid.
-  function handleRemix() {
-    if (!selectedSongDir || !config) return;
+  // flow.  songDirName is the bare folder name from PastMixes (e.g. "Who Else
+  // - Crowns Down").  We find the matching full path in availableSongs before
+  // driving the pipeline.  Always forces output regeneration and still
+  // benefits from the normalize cache when the LUFS target is valid.
+  function handleRemix(songDirName: string) {
+    if (!config) return;
+    const fullPath = availableSongs.find(
+      (d) => d === songDirName || d.endsWith(`/${songDirName}`),
+    );
+    if (!fullPath) return; // stems not on disk — nothing to re-mix
     setEvents([]);
+    setNormalizeCache(null); // clear stale cache for the previous song
     sessionIdRef.current = crypto.randomUUID();
-    setSongDirs([selectedSongDir]);
-    handleNormalize(true, [selectedSongDir]);
+    setSelectedSongDir(fullPath);
+    setSongDirs([fullPath]);
+    handleNormalize(true, [fullPath]);
   }
 
   function handleMix() {
@@ -546,16 +554,6 @@ export function App() {
               )}
             </div>
             <Soundboard config={config} stems={currentStems} onChange={handleConfigChange} />
-            {/* Re-mix button — shown in idle phase so the user can regenerate
-                mixes for a previously-extracted song after tweaking presets. */}
-            {phase === 'idle' && (
-              <button
-                onClick={handleRemix}
-                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
-              >
-                {config.normalize && !normalizeCacheIsValid ? 'Normalize & Mix' : 'Mix Practice Tracks'}
-              </button>
-            )}
           </div>
         )}
 
@@ -572,6 +570,7 @@ export function App() {
             outputs={pastOutputs}
             getDownloadUrl={(p) => api.getDownloadUrl(p)}
             getVariantZipUrl={(p) => api.getVariantZipUrl(p)}
+            onRemix={handleRemix}
           />
         </div>
       </div>
