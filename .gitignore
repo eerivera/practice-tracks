@@ -29,3 +29,7 @@ config/user_mix.yaml
 !.env.example
 .claude/settings.local.json
 
+# Playwright E2E — generated on test runs, not committed
+playwright-report/
+test-results/
+
