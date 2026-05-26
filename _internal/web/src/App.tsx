@@ -374,112 +374,112 @@ export function App() {
           </button>
         )}
 
-        {/* Normalization settings */}
+        {/* Global config controls — normalize settings + config file actions.
+            Shown as soon as config is loaded, above the song-specific mixer.
+            TODO: promote to a proper labelled "Config" section once per-song
+            overrides land and there are two distinct scopes to distinguish. */}
         {config && (
-          <div className="flex items-center gap-3">
-            <label
-              className="flex items-center gap-1.5 text-xs text-slate-400 select-none cursor-pointer"
-              title="When on, each stem is loudness-normalized before mixing. Off by default — use the gain faders to balance stems manually."
-            >
-              <input
-                type="checkbox"
-                className="accent-indigo-500"
-                checked={config.normalize ?? false}
-                onChange={(e) => { handleConfigChange({ ...config, normalize: e.target.checked }); }}
-              />
-              Normalize stems
-            </label>
-            {config.normalize && (
-              <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                <span>Target:</span>
+          <div className={`space-y-2 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
+            {/* Row 1: normalize toggle + LUFS target + Save (right-aligned) */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <label
+                className="flex items-center gap-1.5 text-xs text-slate-400 select-none cursor-pointer"
+                title="When on, each stem is loudness-normalized before mixing. Off by default — use the gain faders to balance stems manually."
+              >
                 <input
-                  type="number"
-                  min={-40}
-                  max={0}
-                  step={1}
-                  value={config.target_lufs}
-                  onChange={(e) => {
-                    const n = parseFloat(e.target.value);
-                    if (!isNaN(n)) {
-                      handleConfigChange({ ...config, target_lufs: Math.max(-40, Math.min(0, Math.round(n))) });
-                    }
-                  }}
-                  className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                  type="checkbox"
+                  className="accent-indigo-500"
+                  checked={config.normalize ?? false}
+                  onChange={(e) => { handleConfigChange({ ...config, normalize: e.target.checked }); }}
                 />
-                <span>LUFS</span>
+                Normalize stems
+              </label>
+              {config.normalize && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <span>Target:</span>
+                  <input
+                    type="number"
+                    min={-40}
+                    max={0}
+                    step={1}
+                    value={config.target_lufs}
+                    onChange={(e) => {
+                      const n = parseFloat(e.target.value);
+                      if (!isNaN(n)) {
+                        handleConfigChange({ ...config, target_lufs: Math.max(-40, Math.min(0, Math.round(n))) });
+                      }
+                    }}
+                    className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                  <span>LUFS</span>
+                </div>
+              )}
+              <div className="ml-auto flex items-center gap-2">
+                {configDirty && <span className="text-[11px] text-amber-400">● unsaved</span>}
+                <button
+                  onClick={() => { void handleSaveConfig(); }}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
+                  disabled={!configDirty}
+                  title="Save as new default (persists across sessions)"
+                >
+                  Save
+                </button>
               </div>
-            )}
+            </div>
+
+            {/* Row 2: config file actions */}
+            <div className="flex gap-2 flex-wrap">
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept=".yaml,.yml"
+                className="hidden"
+                onChange={handleUploadConfig}
+              />
+              <button
+                onClick={() => { uploadInputRef.current?.click(); }}
+                className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                title="Upload a saved config file"
+              >
+                Upload config
+              </button>
+              <button
+                onClick={handleDownloadConfig}
+                className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                title="Download current config as YAML"
+              >
+                Download config
+              </button>
+              <button
+                onClick={() => { void handleResetConfig(); }}
+                className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                title="Restore factory defaults"
+              >
+                Restore defaults
+              </button>
+            </div>
           </div>
         )}
 
         {/* Mix presets — only shown when a song is loaded */}
         {showSoundboard && (
           <div className={`space-y-3 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
-            <div className="space-y-2">
-              {/* Row 1: section title + song selector + save indicator */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">
-                  Mix Presets
-                  {configDirty && <span className="ml-2 text-amber-400 normal-case font-normal">● unsaved</span>}
-                </h2>
-                {/* Song selector */}
-                {availableSongs.length > 1 && (
-                  <select
-                    value={selectedSongDir ?? ''}
-                    onChange={(e) => { setSelectedSongDir(e.target.value); }}
-                    className="text-xs bg-slate-700 text-slate-300 rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500"
-                  >
-                    {availableSongs.map((dir) => (
-                      <option key={dir} value={dir}>{songDisplayName(dir)}</option>
-                    ))}
-                  </select>
-                )}
-                {availableSongs.length === 1 && selectedSongDir && (
-                  <span className="text-xs text-slate-500">{songDisplayName(selectedSongDir)}</span>
-                )}
-                <div className="ml-auto">
-                  <button
-                    onClick={() => { void handleSaveConfig(); }}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
-                    disabled={!configDirty}
-                    title="Save as new default (persists across sessions)"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              {/* Row 2: config file actions */}
-              <div className="flex gap-2 flex-wrap">
-                <input
-                  ref={uploadInputRef}
-                  type="file"
-                  accept=".yaml,.yml"
-                  className="hidden"
-                  onChange={handleUploadConfig}
-                />
-                <button
-                  onClick={() => { uploadInputRef.current?.click(); }}
-                  className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                  title="Upload a saved config file"
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wide">Mix Presets</h2>
+              {availableSongs.length > 1 && (
+                <select
+                  value={selectedSongDir ?? ''}
+                  onChange={(e) => { setSelectedSongDir(e.target.value); }}
+                  className="text-xs bg-slate-700 text-slate-300 rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500"
                 >
-                  Upload config
-                </button>
-                <button
-                  onClick={handleDownloadConfig}
-                  className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                  title="Download current config as YAML"
-                >
-                  Download config
-                </button>
-                <button
-                  onClick={() => { void handleResetConfig(); }}
-                  className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                  title="Restore factory defaults"
-                >
-                  Restore defaults
-                </button>
-              </div>
+                  {availableSongs.map((dir) => (
+                    <option key={dir} value={dir}>{songDisplayName(dir)}</option>
+                  ))}
+                </select>
+              )}
+              {availableSongs.length === 1 && selectedSongDir && (
+                <span className="text-xs text-slate-500">{songDisplayName(selectedSongDir)}</span>
+              )}
             </div>
             <Soundboard config={config} stems={currentStems} onChange={handleConfigChange} />
           </div>
