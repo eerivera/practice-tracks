@@ -365,31 +365,37 @@ export function App() {
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold text-white">Practice Tracks</h1>
           <p className="text-slate-400 text-sm">Drop your Multitracks zips to generate rehearsal mixes</p>
-          {/* Storage badge — browser mode only.  Shows where stems are persisted. */}
+          {/* Storage notice — browser mode only.  Shows where stems are persisted. */}
           {storageInfo && (
-            <div className="flex items-center gap-2 pt-0.5">
-              {storageInfo.type === 'opfs' ? (
-                <>
-                  <span className="text-[11px] text-slate-500">
-                    🗄 {storageInfo.label} — may be cleared by the browser
-                  </span>
-                  {api.switchToFsa && (
+            storageInfo.type === 'opfs' ? (
+              <div className="flex items-start gap-2 mt-2 px-3 py-2.5 bg-amber-900/30 border border-amber-700/40 rounded-lg text-xs text-amber-200">
+                <span className="shrink-0 mt-px">⚠</span>
+                <span>
+                  Your stems are stored in browser storage, which{' '}
+                  <strong>may be cleared by the browser</strong>.{' '}
+                  We recommend{' '}
+                  {api.switchToFsa ? (
                     <button
-                      onClick={() => {
-                        void api.switchToFsa?.().then((info) => { setStorageInfo(info); });
-                      }}
-                      className="text-[11px] text-indigo-400 hover:text-indigo-300 underline transition-colors"
+                      onClick={() => { void api.switchToFsa?.().then((info) => { setStorageInfo(info); }); }}
+                      className="underline font-medium text-amber-100 hover:text-white transition-colors"
                     >
-                      Use a folder instead
+                      saving to a folder instead
                     </button>
+                  ) : (
+                    'saving to a folder instead (not supported in this browser)'
                   )}
-                </>
-              ) : (
-                <span className="text-[11px] text-slate-500">
-                  📁 Stems saved to: {storageInfo.label}
+                  .
                 </span>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-400">
+                <span>📁</span>
+                <span>
+                  Stems and normalized audio saved to:{' '}
+                  <span className="text-slate-200 font-medium">{storageInfo.label}</span>
+                </span>
+              </div>
+            )
           )}
         </header>
 
@@ -477,7 +483,7 @@ export function App() {
             overrides land and there are two distinct scopes to distinguish. */}
         {config && (
           <div className={`space-y-2 transition-opacity ${soundboardDimmed || isProcessing ? 'opacity-40 pointer-events-none' : ''}`}>
-            {/* Row 1: normalize toggle + LUFS target + Save (right-aligned) */}
+            {/* Row 1: normalize toggle + LUFS target */}
             <div className="flex items-center gap-3 flex-wrap">
               <label
                 className="flex items-center gap-1.5 text-xs text-slate-400 select-none cursor-pointer"
@@ -521,17 +527,6 @@ export function App() {
                   )}
                 </div>
               )}
-              <div className="ml-auto flex items-center gap-2">
-                {configDirty && <span className="text-[11px] text-amber-400">● unsaved</span>}
-                <button
-                  onClick={() => { void handleSaveConfig(); }}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
-                  disabled={!configDirty}
-                  title="Save as new default (persists across sessions)"
-                >
-                  Save
-                </button>
-              </div>
             </div>
 
             {/* LUFS staleness banner — shown when the stored normalization cache was
@@ -548,8 +543,8 @@ export function App() {
               </div>
             )}
 
-            {/* Row 2: config file actions */}
-            <div className="flex gap-2 flex-wrap">
+            {/* Row 2: config file actions + set/restore default */}
+            <div className="flex items-center gap-2 flex-wrap">
               <input
                 ref={uploadInputRef}
                 type="file"
@@ -578,6 +573,15 @@ export function App() {
               >
                 Restore defaults
               </button>
+              <button
+                onClick={() => { void handleSaveConfig(); }}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${configDirty ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-default'}`}
+                disabled={!configDirty}
+                title="Save current mix settings as the new default (persists across sessions)"
+              >
+                Set new default
+              </button>
+              {configDirty && <span className="text-[11px] text-amber-400">● unsaved</span>}
             </div>
           </div>
         )}
