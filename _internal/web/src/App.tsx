@@ -203,7 +203,10 @@ export function App() {
     setForceNextRun(false);
     setPhase('normalizing');
 
-    const skipToMix = !config.normalize;
+    // Skip directly to mix when normalize is off, OR when the cache already
+    // covers the current LUFS target (the pipeline will emit normalize_cached
+    // and return immediately — no need to pause at the normalized phase).
+    const skipToMix = !config.normalize || normalizeCacheIsValid;
 
     let skips = 0;
     openSse(
@@ -270,6 +273,9 @@ export function App() {
   // ── Derived UI state ─────────────────────────────────────────────────────────
 
   const isProcessing = ['extracting', 'normalizing', 'mixing'].includes(phase);
+  // True when the on-disk normalize cache exists and already matches the active
+  // LUFS target — no FFmpeg run needed, safe to go straight to mix.
+  const normalizeCacheIsValid = config !== null && normalizeCache !== null && normalizeCache.target_lufs === config.target_lufs;
   const showLog = phase !== 'idle' && phase !== 'files_selected';
   const soundboardDimmed = phase === 'mixing';
   const showSoundboard = config != null && currentStems.length > 0;
@@ -370,7 +376,7 @@ export function App() {
                 onClick={() => { handleNormalize(forceNextRun); }}
                 className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors"
               >
-                {config?.normalize ? 'Normalize Stems' : 'Mix Practice Tracks'}
+                {config?.normalize && !normalizeCacheIsValid ? 'Normalize Stems' : 'Mix Practice Tracks'}
               </button>
             )}
           </div>
