@@ -432,6 +432,14 @@ export function App() {
                     className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
                   />
                   <span>LUFS</span>
+                  {normalizeCache?.target_lufs !== null && normalizeCache !== null && (
+                    <span
+                      className={`ml-1 text-[11px] ${normalizeCache.target_lufs === config.target_lufs ? 'text-emerald-500' : 'text-slate-500'}`}
+                      title={`Stems for this song were last normalized at ${normalizeCache.target_lufs} LUFS`}
+                    >
+                      cached: {normalizeCache.target_lufs} LUFS
+                    </span>
+                  )}
                 </div>
               )}
               <div className="ml-auto flex items-center gap-2">
