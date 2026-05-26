@@ -241,23 +241,26 @@ export function App() {
     });
   }
 
-  // Re-mix a previously-extracted song without going through the extraction
-  // flow.  songDirName is the bare folder name from PastMixes (e.g. "Who Else
-  // - Crowns Down").  We find the matching full path in availableSongs before
-  // driving the pipeline.  Always forces output regeneration and still
-  // benefits from the normalize cache when the LUFS target is valid.
+  // Load a previously-extracted song into the pipeline without starting it.
+  // Sets phase to 'extracted' so the user sees the console log and the
+  // Normalize / Mix button, then clicks when ready.
+  // songDirName is the bare folder name from PastMixes (e.g. "Who Else - Crowns Down").
   function handleRemix(songDirName: string) {
-    if (!config) return;
     const fullPath = availableSongs.find(
       (d) => d === songDirName || d.endsWith(`/${songDirName}`),
     );
-    if (!fullPath) return; // stems not on disk — nothing to re-mix
-    setEvents([]);
-    setNormalizeCache(null); // clear stale cache for the previous song
-    sessionIdRef.current = crypto.randomUUID();
+    if (!fullPath) return; // stems not on disk
+    // Strip key/bpm suffix for display: "Song Name-Ab-68.00bpm" → "Song Name"
+    const displayName = songDirName.replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
+    setEvents([{ type: 'info', message: `Loaded: ${displayName}` }]);
+    setNormalizeCache(null);
     setSelectedSongDir(fullPath);
     setSongDirs([fullPath]);
-    handleNormalize(true, [fullPath]);
+    setExistingOutputCount(0);  // skip keep/overwrite prompt — user chose Re-mix
+    setForceNextRun(true);      // ensure outputs are regenerated when user proceeds
+    setSkippedCount(0);
+    setShowForceModal(false);
+    setPhase('extracted');
   }
 
   function handleMix() {

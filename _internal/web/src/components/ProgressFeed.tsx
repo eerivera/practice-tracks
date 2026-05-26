@@ -43,6 +43,8 @@ function eventToLine(e: ProgressEvent): string | null {
       return `  ⏭ ${e.name} — ${e.reason}`;
     case 'pipeline_complete':
       return e.skipped ? null : `✅ Done (${fmtMs(e.elapsedMs)})`;
+    case 'info':
+      return `ℹ ${e.message}`;
     case 'error':
       return `❌ Error: ${e.message}`;
     case 'session_complete':
