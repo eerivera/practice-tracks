@@ -415,26 +415,28 @@ export function App() {
                 Normalize stems
               </label>
               {config.normalize && (
-                <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <span>Target:</span>
-                  <input
-                    type="number"
-                    min={-40}
-                    max={0}
-                    step={1}
-                    value={config.target_lufs}
-                    onChange={(e) => {
-                      const n = parseFloat(e.target.value);
-                      if (!isNaN(n)) {
-                        handleConfigChange({ ...config, target_lufs: Math.max(-40, Math.min(0, Math.round(n))) });
-                      }
-                    }}
-                    className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
-                  />
-                  <span>LUFS</span>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <span>Target:</span>
+                    <input
+                      type="number"
+                      min={-40}
+                      max={0}
+                      step={1}
+                      value={config.target_lufs}
+                      onChange={(e) => {
+                        const n = parseFloat(e.target.value);
+                        if (!isNaN(n)) {
+                          handleConfigChange({ ...config, target_lufs: Math.max(-40, Math.min(0, Math.round(n))) });
+                        }
+                      }}
+                      className="w-14 text-center text-xs font-mono bg-slate-700 text-white rounded px-1 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                    />
+                    <span>LUFS</span>
+                  </div>
                   {normalizeCache?.target_lufs !== null && normalizeCache !== null && (
                     <span
-                      className={`ml-1 text-[11px] ${normalizeCache.target_lufs === config.target_lufs ? 'text-emerald-500' : 'text-slate-500'}`}
+                      className={`text-[11px] ${normalizeCache.target_lufs === config.target_lufs ? 'text-emerald-500' : 'text-slate-500'}`}
                       title={`Stems for this song were last normalized at ${normalizeCache.target_lufs} LUFS`}
                     >
                       cached: {normalizeCache.target_lufs} LUFS
