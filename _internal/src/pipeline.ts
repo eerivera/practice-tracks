@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { createBackend } from './backend/factory.js';
 import { loadConfig } from './config/loader.js';
 import { findStemBus, buildMixInputs } from '../common/mixer.js';
@@ -10,6 +9,41 @@ import { type StemFile, type AudioBackend, type Config } from '../common/types.j
 
 const AUDIO_EXTENSIONS = /\.(m4a|wav|mp3|aiff?)$/i;
 const CANDIDATE_STEMS_DIRS = ['stems', 'MultiTracks'];
+
+// ── Normalized stem cache ─────────────────────────────────────────────────────
+// Normalized stems are persisted to songs/<name>/normalized/ so they can be
+// reused across runs without re-invoking FFmpeg.  A meta.json sidecar tracks
+// the LUFS target used; if it changes the cache is treated as stale.
+
+const NORMALIZED_DIR = 'normalized';
+const NORMALIZE_META_FILE = 'meta.json';
+
+interface NormalizeCacheMeta {
+  target_lufs: number;
+}
+
+function normalizedCacheDir(songDir: string): string {
+  return path.join(songDir, NORMALIZED_DIR);
+}
+
+function readNormalizeCacheMeta(songDir: string): NormalizeCacheMeta | null {
+  const metaPath = path.join(normalizedCacheDir(songDir), NORMALIZE_META_FILE);
+  if (!fs.existsSync(metaPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as NormalizeCacheMeta;
+  } catch {
+    return null;
+  }
+}
+
+// Returns true when every expected normalized stem file exists on disk and the
+// cached LUFS target matches the one currently in config.
+function isCacheValid(songDir: string, targetLufs: number, rawStems: StemFile[]): boolean {
+  const meta = readNormalizeCacheMeta(songDir);
+  if (meta?.target_lufs !== targetLufs) return false;
+  const cacheDir = normalizedCacheDir(songDir);
+  return rawStems.every((s) => fs.existsSync(path.join(cacheDir, `${s.filename}.wav`)));
+}
 
 export interface PipelineOptions {
   songDir: string;
@@ -27,12 +61,11 @@ export interface PipelineResult {
 
 // Holds normalization output between the normalize and mix steps.
 // The server stores this between HTTP requests; runPipeline uses it internally.
-// tmpDir is undefined when normalization was skipped (config.normalize: false) —
-// in that case normalizedStems point to the original stem paths.
+// When config.normalize is false, normalizedStems point to the original stem
+// paths.  When true, they point to the on-disk cache (songs/<name>/normalized/).
 export interface NormalizeResult {
   songDir: string;
   outputDir: string;
-  tmpDir?: string;
   normalizedStems: StemFile[];
   config: Config;
   backend: AudioBackend;
@@ -183,12 +216,25 @@ export async function runNormalize(
   const pipelineStartMs = Date.now();
 
   // When normalization is disabled, skip ffmpeg processing and use the original
-  // stem paths directly. tmpDir is left undefined so cleanup is skipped.
+  // stem paths directly.
   if (!config.normalize) {
     return { songDir, outputDir, normalizedStems: stems, config, backend, pipelineStartMs };
   }
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'practice-tracks-'));
+  const cacheDir = normalizedCacheDir(songDir);
+
+  // Cache hit — all expected normalized files exist at the current LUFS target.
+  if (isCacheValid(songDir, config.target_lufs, stems)) {
+    const normalizedStems = stems.map((s) => ({
+      ...s,
+      path: path.join(cacheDir, `${s.filename}.wav`),
+    }));
+    emit({ type: 'normalize_cached', total: stems.length, targetLufs: config.target_lufs });
+    return { songDir, outputDir, normalizedStems, config, backend, pipelineStartMs };
+  }
+
+  // Cache miss or stale LUFS — (re-)normalize and persist to cache dir.
+  fs.mkdirSync(cacheDir, { recursive: true });
 
   const configured = config.normalization_concurrency ?? 0;
   const concurrency = Math.min(
@@ -208,10 +254,10 @@ export async function runNormalize(
     let next = queue.shift();
     while (next !== undefined) {
       const { stem, i } = next;
-      const tmpPath = path.join(tmpDir, `${stem.filename}.wav`);
+      const cachedPath = path.join(cacheDir, `${stem.filename}.wav`);
       const t = Date.now();
-      await backend.normalize(stem.path, tmpPath, { targetLufs: config.target_lufs, truePeak: -1 });
-      normalizedStems[i] = { ...stem, path: tmpPath };
+      await backend.normalize(stem.path, cachedPath, { targetLufs: config.target_lufs, truePeak: -1 });
+      normalizedStems[i] = { ...stem, path: cachedPath };
       completed++;
       emit({ type: 'stem_normalized', name: stem.filename, index: completed, total: stems.length, timeMs: Date.now() - t });
       next = queue.shift();
@@ -221,7 +267,11 @@ export async function runNormalize(
   await Promise.all(Array.from({ length: concurrency }, normalizeWorker));
   emit({ type: 'normalize_complete', total: stems.length, elapsedMs: Date.now() - normalizeStart });
 
-  return { songDir, outputDir, tmpDir, normalizedStems, config, backend, pipelineStartMs };
+  // Persist cache metadata so future runs can validate the LUFS target.
+  const cacheMeta: NormalizeCacheMeta = { target_lufs: config.target_lufs };
+  fs.writeFileSync(path.join(cacheDir, NORMALIZE_META_FILE), JSON.stringify(cacheMeta, null, 2));
+
+  return { songDir, outputDir, normalizedStems, config, backend, pipelineStartMs };
 }
 
 // ── Step 2: mix ───────────────────────────────────────────────────────────────
@@ -276,9 +326,5 @@ export async function runPipeline(
     archiveExistingOutput(normalizeResult.outputDir, emit);
   }
 
-  try {
-    return await runMix(normalizeResult, emit);
-  } finally {
-    if (normalizeResult.tmpDir) fs.rmSync(normalizeResult.tmpDir, { recursive: true, force: true });
-  }
+  return runMix(normalizeResult, emit);
 }

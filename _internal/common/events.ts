@@ -17,6 +17,8 @@ export type ProgressEvent =
   | { type: 'normalize_start'; total: number; concurrency: number; targetLufs: number }
   | { type: 'stem_normalized'; name: string; index: number; total: number; timeMs: number }
   | { type: 'normalize_complete'; total: number; elapsedMs: number }
+  // Emitted instead of normalize_start when a valid on-disk cache is reused.
+  | { type: 'normalize_cached'; total: number; targetLufs: number }
   | { type: 'mix_start'; total: number }
   | { type: 'mix_generated'; name: string; stems: number; timeMs: number }
   | { type: 'mix_skipped'; name: string; reason: string }
@@ -89,6 +91,9 @@ export const consoleEmitter: Emitter = (event) => {
       break;
     case 'normalize_complete':
       console.log(`Normalization complete (${fmtMs(event.elapsedMs)} total)\n`);
+      break;
+    case 'normalize_cached':
+      console.log(`Normalization cache hit (${event.total} stems @ ${event.targetLufs} LUFS) — skipping\n`);
       break;
     case 'mix_start':
       console.log('Generating mixes...');

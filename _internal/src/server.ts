@@ -34,15 +34,13 @@ function sseEmitter(sessionId: string): Emitter {
 
 // ─── Normalize result registry ────────────────────────────────────────────────
 // Holds in-memory normalization output between the /api/normalize and /api/mix
-// requests for a given session. Cleaned up in /api/mix (success or error).
+// requests for a given session. Cleared in /api/mix (success or error).
+// Normalized stems are persisted to disk (songs/<name>/normalized/) so no
+// temporary files need to be cleaned up here.
 
 const normalizedResults = new Map<string, NormalizeResult[]>();
 
-function cleanupNormalized(sessionId: string): void {
-  const results = normalizedResults.get(sessionId) ?? [];
-  for (const r of results) {
-    if (r.tmpDir) fs.rmSync(r.tmpDir, { recursive: true, force: true });
-  }
+function clearNormalizedResults(sessionId: string): void {
   normalizedResults.delete(sessionId);
 }
 
@@ -158,7 +156,7 @@ app.post('/api/normalize', async (req: Request, res: Response) => {
   }
 
   // Clean up any stale results from a previous normalize for this session
-  cleanupNormalized(sessionId);
+  clearNormalizedResults(sessionId);
 
   res.json({ status: 'normalizing', count: songDirs.length });
 
@@ -207,7 +205,7 @@ app.post('/api/mix', async (req: Request, res: Response) => {
       }
     }
   } finally {
-    cleanupNormalized(sessionId);
+    clearNormalizedResults(sessionId);
     emit({ type: 'session_complete' });
   }
 });
