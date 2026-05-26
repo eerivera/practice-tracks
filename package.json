@@ -17,6 +17,9 @@
     "lint": "eslint --config _internal/eslint.config.js _internal/src _internal/common _internal/tests _internal/web/src",
     "test": "vitest run --config _internal/vitest.config.ts",
     "test:watch": "vitest --config _internal/vitest.config.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "playwright:install": "playwright install chromium",
     "build": "tsc --project _internal/tsconfig.json",
     "check": "npm run type-check && npm run lint && npm run test",
     "web": "vite build _internal/web && tsx _internal/src/server.ts",
@@ -36,6 +39,7 @@
     "open": "^10.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/express": "^5.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/multer": "^1.4.11",
