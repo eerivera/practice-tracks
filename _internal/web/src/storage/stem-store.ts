@@ -128,7 +128,7 @@ export class StemStore {
   // ── Mix output ───────────────────────────────────────────────────────────────
 
   /**
-   * Persist finished mix files under songs/<songDir>/output/.
+   * Persist finished mix files under songs/<displayName>/<keyBpm>/output/.
    * Called after mixSongs completes for a song.
    */
   async saveOutput(
@@ -139,6 +139,33 @@ export class StemStore {
     const outputDir = await dir.getDirectoryHandle('output', { create: true });
     for (const file of files) {
       await writeFile(outputDir, file.filename, file.data);
+    }
+  }
+
+  /**
+   * Returns all audio mix files stored under songs/<displayName>/<keyBpm>/output/.
+   * Uses FileSystemDirectoryHandle.entries() (exists in browsers, missing from TS DOM lib).
+   */
+  async loadAllOutputs(songDir: string): Promise<{ filename: string; data: Uint8Array }[]> {
+    try {
+      const dir = await this.getSongDir(songDir, false);
+      const outputDir = await dir.getDirectoryHandle('output');
+
+      // entries() is present in browsers but not yet declared in lib.dom.d.ts.
+      type IterableDir = FileSystemDirectoryHandle & {
+        entries(): AsyncIterable<[string, FileSystemHandle]>;
+      };
+      const AUDIO_RE = /\.(m4a|mp3|wav|aiff?)$/i;
+      const results: { filename: string; data: Uint8Array }[] = [];
+
+      for await (const [name, handle] of (outputDir as unknown as IterableDir).entries()) {
+        if (handle.kind !== 'file' || !AUDIO_RE.test(name)) continue;
+        const file = await (handle as FileSystemFileHandle).getFile();
+        results.push({ filename: name, data: new Uint8Array(await file.arrayBuffer()) });
+      }
+      return results;
+    } catch {
+      return [];
     }
   }
 

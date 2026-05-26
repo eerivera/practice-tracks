@@ -12,6 +12,7 @@ import {
   isFsaSupported,
   type StemStore,
   type StorageInfo,
+  type StoredSong,
 } from '../storage/index.js';
 
 // ── Internal session state ────────────────────────────────────────────────────
@@ -68,6 +69,11 @@ export class BrowserApi implements ProcessingApi {
   // Keyed by songDir.  rawData is undefined until processing starts.
   private readonly loadedSongs = new Map<string, BrowserSong>();
 
+  // Mix outputs reconstructed from storage on init (survives page reloads).
+  private readonly persistedOutputs: SongOutputs[] = [];
+  private readonly persistedFileBlobUrls = new Map<string, string>();
+  private readonly persistedVariantZipUrls = new Map<string, string>();
+
   private stemStore: StemStore | null = null;
   private storageInfo: StorageInfo | null = null;
 
@@ -105,10 +111,47 @@ export class BrowserApi implements ProcessingApi {
           stems: s.stems.map((st) => ({ filename: st.filename, ext: st.ext })),
         });
       }
+
+      // Reconstruct Past Mixes from on-disk output so they survive page reloads.
+      for (const s of stored) {
+        await this.reloadOutputs(s);
+      }
     } catch (err) {
       // Graceful degradation: run without persistence (in-memory only).
       console.warn('[BrowserApi] Stem storage unavailable, running in-memory only:', err);
     }
+  }
+
+  /** Load persisted mix files for one song and populate the persisted URL maps. */
+  private async reloadOutputs(s: StoredSong): Promise<void> {
+    if (!this.stemStore) return;
+    const outputFiles = await this.stemStore.loadAllOutputs(s.songDir);
+    if (outputFiles.length === 0) return;
+
+    const songFiles: { name: string; path: string }[] = [];
+    const zipEntries: Record<string, Uint8Array> = {};
+
+    for (const { filename, data } of outputFiles) {
+      const ext = filename.split('.').pop()?.toLowerCase() ?? 'mp3';
+      const mimeType = ext === 'm4a' ? 'audio/mp4' : `audio/${ext === 'mp3' ? 'mpeg' : ext}`;
+      const blob = new Blob([data], { type: mimeType });
+      const filePath = `${s.songDir}/${filename}`;
+      this.persistedFileBlobUrls.set(filePath, URL.createObjectURL(blob));
+      songFiles.push({ name: filename, path: filePath });
+      zipEntries[filename] = data;
+    }
+
+    const variantZip = zipSync(zipEntries);
+    const variantPath = `songs/${s.songDir}/output`;
+    this.persistedVariantZipUrls.set(
+      variantPath,
+      URL.createObjectURL(new Blob([variantZip], { type: 'application/zip' })),
+    );
+
+    this.persistedOutputs.push({
+      songDir: s.songDir,
+      variants: [{ keyBpm: s.keyBpm || s.displayName, files: songFiles }],
+    });
   }
 
   /** Switch to a user-picked FSA folder (call from a click handler). */
@@ -429,11 +472,17 @@ export class BrowserApi implements ProcessingApi {
   }
 
   getOutputs(): Promise<SongOutputs[]> {
-    // Return the most recent session that has completed mixes.
-    for (const session of [...this.sessions.values()].reverse()) {
-      if (session.outputs.length > 0) return Promise.resolve(session.outputs);
+    // Merge persisted outputs (from storage) with current-session outputs.
+    // Session outputs take precedence (most recent mix wins for a given songDir).
+    const merged = new Map<string, SongOutputs>(
+      this.persistedOutputs.map((out) => [out.songDir, out]),
+    );
+    for (const session of this.sessions.values()) {
+      for (const out of session.outputs) {
+        merged.set(out.songDir, out);
+      }
     }
-    return Promise.resolve([]);
+    return Promise.resolve([...merged.values()]);
   }
 
   async listSongs(): Promise<string[]> {
@@ -476,7 +525,8 @@ export class BrowserApi implements ProcessingApi {
       const url = session.fileBlobUrls.get(filePath);
       if (url) return url;
     }
-    return '';
+    // Fall back to blob URLs reconstructed from persistent storage on init.
+    return this.persistedFileBlobUrls.get(filePath) ?? '';
   }
 
   getVariantZipUrl(variantPath: string): string {
@@ -484,6 +534,7 @@ export class BrowserApi implements ProcessingApi {
       const url = session.variantZipUrls.get(variantPath);
       if (url) return url;
     }
-    return '';
+    // Fall back to zip URL reconstructed from persistent storage on init.
+    return this.persistedVariantZipUrls.get(variantPath) ?? '';
   }
 }
