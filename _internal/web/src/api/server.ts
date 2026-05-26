@@ -84,6 +84,13 @@ export class ServerApi implements ProcessingApi {
     return res.json() as Promise<StemFile[]>;
   }
 
+  async getNormalizeCache(songDir: string): Promise<{ target_lufs: number | null }> {
+    const encoded = btoa(songDir).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const res = await fetch(`/api/normalize-cache/${encoded}`);
+    if (!res.ok) return { target_lufs: null };
+    return res.json() as Promise<{ target_lufs: number | null }>;
+  }
+
   async getOutputs(): Promise<SongOutputs[]> {
     const res = await fetch('/api/outputs');
     if (!res.ok) throw new Error('Failed to load outputs');

@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import open from 'open';
 import { zipSync } from 'fflate';
-import { runNormalize, runMix, hasExistingOutput, listStemFiles, type NormalizeResult } from './pipeline.js';
+import { runNormalize, runMix, hasExistingOutput, listStemFiles, getNormalizeCacheMeta, type NormalizeResult } from './pipeline.js';
 import type { Config } from '../common/types.js';
 import { extractMultitrackZip } from './extractor.js';
 import { loadBaseConfig, saveBaseConfig, resetBaseConfig } from './config/loader.js';
@@ -235,6 +235,19 @@ app.get('/api/stems/:encodedSongDir', (req: Request, res: Response) => {
   } catch (err) {
     res.status(404).json({ error: err instanceof Error ? err.message : String(err) });
   }
+});
+
+// Return the normalize cache metadata (target LUFS) for a song directory.
+// The client uses this to detect when the cached normalization target no longer
+// matches the active config so it can prompt the user to re-normalize.
+app.get('/api/normalize-cache/:encodedSongDir', (req: Request, res: Response) => {
+  const songDir = Buffer.from(req.params.encodedSongDir as string, 'base64url').toString('utf8');
+  if (!path.resolve(songDir).startsWith(SONGS_ROOT)) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  const meta = getNormalizeCacheMeta(songDir);
+  res.json({ target_lufs: meta?.target_lufs ?? null });
 });
 
 // Check whether output files already exist for a set of song directories.

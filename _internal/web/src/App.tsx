@@ -35,6 +35,10 @@ export function App() {
   const [skippedCount, setSkippedCount] = useState(0);
   const [fileCount, setFileCount] = useState(0);
   const [showForceModal, setShowForceModal] = useState(false);
+  // null = not yet fetched; { target_lufs: null } = fetched, no cache exists
+  const [normalizeCache, setNormalizeCache] = useState<{ target_lufs: number | null } | null>(null);
+  // Incrementing this triggers a re-fetch of normalizeCache after normalization.
+  const [cacheRefetchTick, setCacheRefetchTick] = useState(0);
   const filesRef = useRef<File[] | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string>(crypto.randomUUID());
@@ -59,6 +63,15 @@ export function App() {
       setStemsBySong((prev) => ({ ...prev, [selectedSongDir]: s }));
     }).catch(console.error);
   }, [selectedSongDir, stemsBySong]);
+
+  // Fetch normalize cache metadata whenever the selected song changes or after
+  // a normalization run completes (cacheRefetchTick increments then).
+  useEffect(() => {
+    if (!selectedSongDir) return;
+    api.getNormalizeCache(selectedSongDir)
+      .then((result) => { setNormalizeCache(result); })
+      .catch(() => { setNormalizeCache({ target_lufs: null }); });
+  }, [selectedSongDir, cacheRefetchTick]);
 
   const currentStems: StemFile[] = (selectedSongDir ? stemsBySong[selectedSongDir] : null) ?? [];
 
@@ -192,8 +205,18 @@ export function App() {
     openSse(
       (event) => { if (event.type === 'skip') skips++; },
       () => {
+        // Re-fetch normalize cache so the LUFS staleness banner reflects the
+        // result of this normalization run immediately.
+        setCacheRefetchTick((t) => t + 1);
+
         setSkippedCount(skips);
-        if (skips > 0) {
+        const allSkipped = songDirs.length > 0 && skips >= songDirs.length;
+        if (allSkipped) {
+          // All songs already had output and were skipped — nothing to mix.
+          // Go directly to complete so the UI doesn't grey out indefinitely.
+          setPhase('complete');
+          api.getOutputs().then(setPastOutputs).catch(console.error);
+        } else if (skips > 0) {
           setPhase('normalized');
           setShowForceModal(true);
         } else if (skipToMix) {
@@ -317,13 +340,6 @@ export function App() {
 
         {phase === 'extracted' && (
           <div className="space-y-3">
-            {config?.normalize && (
-              <div className="flex items-start gap-2 px-3 py-2.5 bg-slate-800 rounded-lg text-sm text-slate-400">
-                <span className="mt-px shrink-0">ℹ</span>
-                <span>Stems must be re-normalized each session — caching is coming soon.</span>
-              </div>
-            )}
-
             {existingOutputCount > 0 ? (
               <>
                 <p className="text-sm text-slate-300 px-1">
@@ -426,6 +442,28 @@ export function App() {
                 </button>
               </div>
             </div>
+
+            {/* LUFS staleness banner — shown when the stored normalization cache was
+                built with a different target than the one currently in config. */}
+            {config.normalize &&
+              normalizeCache !== null &&
+              normalizeCache.target_lufs !== null &&
+              normalizeCache.target_lufs !== config.target_lufs && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-900/30 border border-amber-700/40 rounded-lg text-xs text-amber-300">
+                <span className="shrink-0">⚠</span>
+                <span>
+                  Cached at {normalizeCache.target_lufs} LUFS — current target is {config.target_lufs} LUFS.
+                </span>
+                {songDirs.length > 0 && !isProcessing && (
+                  <button
+                    onClick={() => { handleNormalize(true); }}
+                    className="ml-auto px-2.5 py-0.5 rounded text-xs bg-amber-700/50 hover:bg-amber-600/50 text-amber-100 shrink-0 transition-colors"
+                  >
+                    Re-normalize
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Row 2: config file actions */}
             <div className="flex gap-2 flex-wrap">

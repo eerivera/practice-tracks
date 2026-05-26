@@ -36,6 +36,11 @@ function readNormalizeCacheMeta(songDir: string): NormalizeCacheMeta | null {
   }
 }
 
+// Public accessor used by the HTTP server to expose cache state to the frontend.
+export function getNormalizeCacheMeta(songDir: string): NormalizeCacheMeta | null {
+  return readNormalizeCacheMeta(songDir);
+}
+
 // Returns true when every expected normalized stem file exists on disk and the
 // cached LUFS target matches the one currently in config.
 function isCacheValid(songDir: string, targetLufs: number, rawStems: StemFile[]): boolean {

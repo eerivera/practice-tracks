@@ -37,6 +37,13 @@ export interface ProcessingApi {
   /** Return the stem files for a given song directory. */
   getStems(songDir: string): Promise<StemFile[]>;
 
+  /**
+   * Return the normalization cache metadata for a song directory.
+   * `target_lufs` is null when no cache exists yet.
+   * Used to detect when the stored normalization no longer matches the active config.
+   */
+  getNormalizeCache(songDir: string): Promise<{ target_lufs: number | null }>;
+
   /** Return a URL that downloads all mixes for one key/BPM variant as a zip. */
   getVariantZipUrl(variantPath: string): string;
 

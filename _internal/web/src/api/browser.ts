@@ -260,6 +260,11 @@ export class BrowserApi implements ProcessingApi {
     return Promise.resolve([]);
   }
 
+  // Browser mode has no persistent normalize cache — always reports no cache.
+  getNormalizeCache(_songDir: string): Promise<{ target_lufs: number | null }> {
+    return Promise.resolve({ target_lufs: null });
+  }
+
   // Return stem files for a song from the current in-memory session.
   getStems(songDir: string): Promise<StemFile[]> {
     for (const session of [...this.sessions.values()].reverse()) {
