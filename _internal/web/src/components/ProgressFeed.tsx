@@ -11,7 +11,7 @@ function fmtMs(ms: number): string {
     : `${(ms / 1000).toFixed(1)}s`;
 }
 
-function eventToLine(e: ProgressEvent): string | null {
+function eventToLine(e: ProgressEvent, index: number, all: ProgressEvent[]): string | null {
   switch (e.type) {
     case 'backend':
       return e.kind === 'native'
@@ -43,10 +43,28 @@ function eventToLine(e: ProgressEvent): string | null {
       return `  ⏭ ${e.name} — ${e.reason}`;
     case 'pipeline_complete':
       return e.skipped ? null : `✅ Done (${fmtMs(e.elapsedMs)})`;
+    case 'info':
+      return `ℹ ${e.message}`;
     case 'error':
       return `❌ Error: ${e.message}`;
-    case 'session_complete':
+    case 'session_complete': {
+      // Find the start of this session (events since the previous session_complete).
+      let sessionStart = 0;
+      for (let j = index - 1; j >= 0; j--) {
+        if (all[j].type === 'session_complete') { sessionStart = j + 1; break; }
+      }
+      const session = all.slice(sessionStart, index);
+      if (session.some((ev) => ev.type === 'mix_start' || ev.type === 'pipeline_complete')) {
+        return '── Mixing complete ──';
+      }
+      if (session.some((ev) => ev.type === 'normalize_start' || ev.type === 'normalize_cached')) {
+        return '── Normalizing complete ──';
+      }
+      if (session.some((ev) => ev.type === 'extract_start' || ev.type === 'songs_ready')) {
+        return '── Extraction complete ──';
+      }
       return '── All done ──';
+    }
     default:
       return null;
   }
@@ -70,7 +88,7 @@ export function ProgressFeed({ events }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [events]);
 
-  const lines = events.map(eventToLine).filter(Boolean) as string[];
+  const lines = events.map((e, i) => eventToLine(e, i, events)).filter(Boolean) as string[];
 
   return (
     <div className="space-y-3">

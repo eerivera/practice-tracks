@@ -23,6 +23,7 @@ export type ProgressEvent =
   | { type: 'mix_generated'; name: string; stems: number; timeMs: number }
   | { type: 'mix_skipped'; name: string; reason: string }
   | { type: 'pipeline_complete'; outputDir: string; elapsedMs: number; skipped: boolean; mixFiles: string[] }
+  | { type: 'info'; message: string }
   | { type: 'error'; message: string }
   | { type: 'session_complete' }
   // Fired after all zips in an extract step have been processed.
@@ -109,6 +110,9 @@ export const consoleEmitter: Emitter = (event) => {
         console.log(`\nAll mixes written to: ${event.outputDir}`);
         console.log(`Total time: ${fmtMs(event.elapsedMs)}`);
       }
+      break;
+    case 'info':
+      console.log(event.message);
       break;
     case 'error':
       console.error(`Error: ${event.message}`);
