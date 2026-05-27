@@ -124,8 +124,13 @@ export function App() {
     const a = document.createElement('a');
     a.href = url;
     a.download = 'practice-tracks-config.yaml';
+    // Anchor must be in the DOM for programmatic download to work reliably across
+    // all browsers — a detached click() can navigate instead of downloading.
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    // Defer revoke so the browser has time to start the download.
+    setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
   }
 
   function handleUploadConfig(e: React.ChangeEvent<HTMLInputElement>) {
@@ -134,8 +139,10 @@ export function App() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const parsed = yaml.load(ev.target?.result as string) as Config;
-        setConfig(parsed);
+        const partial = yaml.load(ev.target?.result as string) as Partial<Config>;
+        // Merge with current config so required array fields (buses, mixes) are
+        // never undefined when the uploaded file omits them (e.g. older schema).
+        setConfig((prev) => ({ ...(prev ?? {}), ...partial }) as Config);
         setConfigDirty(true);
       } catch {
         alert('Could not parse config file. Make sure it is a valid YAML config.');

@@ -203,6 +203,71 @@ test('Upload/Download config hidden before stems loaded, visible after', async (
   await expect(page.getByRole('button', { name: 'Download config' })).toBeVisible();
 });
 
+// ── Download config does not reset state ─────────────────────────────────────
+// Bug: handleDownloadConfig used a.click() on a detached anchor.  In some
+// browsers this navigates instead of downloading, reloading the page and
+// clearing the in-progress zip queue.
+// Fix: anchor is appended to document.body before click() and removed after.
+
+test('Download config does not clear the zip queue', async ({ page }) => {
+  await page.goto('/');
+  // Seed a song with stems so showSoundboard is true (Download config visible).
+  await seedOpfsOutputs(page, SONG_WITH_STEMS);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Download config' })).toBeVisible({ timeout: 5000 });
+
+  // Queue a zip to enter files_selected phase.
+  const fakeZip = Buffer.from([
+    0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+  await page.locator('input[type="file"][accept=".zip"]').setInputFiles({
+    name: 'track.zip',
+    mimeType: 'application/zip',
+    buffer: fakeZip,
+  });
+  await expect(page.getByText('1 zip ready')).toBeVisible({ timeout: 3000 });
+
+  // Click Download config — must not navigate away or clear the zip queue.
+  await page.getByRole('button', { name: 'Download config' }).click();
+
+  // Zip queue must still be present after the download.
+  await expect(page.getByText('1 zip ready')).toBeVisible({ timeout: 2000 });
+});
+
+// ── Gain label keyboard editing ───────────────────────────────────────────────
+// Bug (Mike feedback): tabbing to a dB field focused the button but did not
+// enter edit mode, so the user had to click first before typing.
+// Fix: GainLabel is now always an <input> that selects all on focus, making
+// Tab → type → Enter work without a prior click.
+
+test('dB gain fields accept direct keyboard input without clicking first', async ({ page }) => {
+  await page.goto('/');
+  await seedOpfsOutputs(page, SONG_WITH_STEMS);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: SONG_WITH_STEMS.displayName })).toBeVisible({ timeout: 5000 });
+
+  // Re-mix transitions to extracted phase where the Soundboard is visible.
+  await page.getByRole('button', { name: 'Re-mix' }).click();
+  await expect(
+    page.getByRole('button', { name: /Mix Practice Tracks|Normalize Stems/i })
+  ).toBeVisible({ timeout: 5000 });
+
+  // Find the first gain input (any bus channel that matched a stem).
+  const gainInput = page.locator('input[title="Click or tab to set gain (dB)"]').first();
+  await expect(gainInput).toBeVisible();
+
+  // Focus directly (simulates Tab — original bug: this only focused the button,
+  // typing did nothing until the user also clicked it).
+  await gainInput.focus();
+  // onFocus selects all text, so typing replaces it.
+  await page.keyboard.type('3');
+  await page.keyboard.press('Enter');
+
+  // After commit the value reflects the typed gain.
+  await expect(gainInput).toHaveValue('+3');
+});
+
 // ── Partial / stale localStorage config (regression) ─────────────────────────
 // Bug: getConfig() returned JSON.parse(saved) as Config without validation.
 // If localStorage held a partial/old config missing required array fields
