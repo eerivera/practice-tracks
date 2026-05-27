@@ -81,11 +81,13 @@ function progressFromEvents(events: ProgressEvent[]): { done: number; total: num
 }
 
 export function ProgressFeed({ events }: Props) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const progress = progressFromEvents(events);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
   }, [events]);
 
   const lines = events.map((e, i) => eventToLine(e, i, events)).filter(Boolean) as string[];
@@ -107,13 +109,12 @@ export function ProgressFeed({ events }: Props) {
         </div>
       )}
 
-      <div className="bg-slate-950 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
+      <div ref={containerRef} className="bg-slate-950 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
         {lines.map((line, i) => (
           <div key={i} className="text-slate-300 leading-relaxed whitespace-pre-wrap">
             {line}
           </div>
         ))}
-        <div ref={bottomRef} />
       </div>
     </div>
   );

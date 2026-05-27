@@ -5,12 +5,23 @@ _internal/web/dist/
 
 # In song directories, only .yaml and .json config files are committed.
 # Audio, artwork, output, and future normalized cache are all gitignored.
-songs/*/output/
-songs/*/stems/
-songs/*/normalized/
-songs/*/*.jpg
-songs/*/*.jpeg
-songs/*/*.png
+# Patterns cover both the legacy 1-level layout (songs/<songDir>/) and the
+# current 2-level layout (songs/<name>/<keyBpm>/).
+songs/**/output/
+songs/**/stems/
+songs/**/normalized/
+songs/**/*.jpg
+songs/**/*.jpeg
+songs/**/*.png
+songs/**/*.m4a
+songs/**/*.mp3
+songs/**/*.wav
+songs/**/*.aac
+songs/**/*.flac
+# Generated per-song metadata (written by the app on extraction, not user-editable)
+songs/**/meta.json
+# Browser-mode songs list written to FSA/OPFS root — not committed
+songs-list.json
 
 # Zip files are large — not committed
 queue-zips/*.zip

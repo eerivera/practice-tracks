@@ -286,36 +286,61 @@ function MixTab({ name, selected, onSelect, onRename, onRemove, removable }: Mix
     setRenaming(false);
   }
 
+  // Renaming: show an inline input inside the active-tab shell.
   if (renaming) {
     return (
-      <input
-        autoFocus
-        className="px-3 py-1 rounded-md text-sm font-medium bg-indigo-700 text-white border border-indigo-400 w-32"
-        value={val}
-        onChange={(e) => { setVal(e.target.value); }}
-        onBlur={commitRename}
-        onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(false); }}
-      />
+      <div className="relative -mb-px flex items-center px-3 py-1.5 rounded-t-lg bg-slate-800 border border-slate-700 border-b-slate-800">
+        <input
+          autoFocus
+          className="w-24 bg-transparent text-sm font-medium text-white focus:outline-none"
+          value={val}
+          onChange={(e) => { setVal(e.target.value); }}
+          onBlur={commitRename}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenaming(false); }}
+        />
+      </div>
     );
   }
 
+  // Active tab: -mb-px overlaps the bottom border of the strip so it reads as connected to the panel.
+  if (selected) {
+    return (
+      <div className="relative -mb-px flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg bg-slate-800 border border-slate-700 border-b-slate-800">
+        <button
+          onClick={onSelect}
+          onDoubleClick={() => { setVal(name); setRenaming(true); }}
+          className="text-sm font-medium text-white"
+          title="Double-click to rename"
+        >
+          {name}
+        </button>
+        {removable && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            className="text-slate-500 hover:text-slate-200 text-xs leading-none transition-colors"
+            title="Remove mix"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Inactive tab — border on top/left/right makes the tab shape legible against
+  // the page background; border-b-0 lets the strip's bottom border show through.
   return (
-    <div className="flex items-center gap-0.5">
-      <button
-        onClick={onSelect}
-        onDoubleClick={() => { setVal(name); setRenaming(true); }}
-        className={[
-          'px-3 py-1 rounded-md text-sm font-medium transition-colors',
-          selected ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600',
-        ].join(' ')}
-        title="Double-click to rename"
-      >
-        {name}
-      </button>
+    <div
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg border border-slate-700/60 border-b-0 bg-slate-800/30 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 cursor-pointer transition-colors"
+      onClick={onSelect}
+      onDoubleClick={() => { setVal(name); setRenaming(true); }}
+      title="Double-click to rename"
+    >
+      <span className="text-sm font-medium">{name}</span>
       {removable && (
         <button
-          onClick={onRemove}
-          className="text-slate-600 hover:text-red-400 text-xs leading-none px-0.5 transition-colors"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="text-slate-600 hover:text-red-400 text-xs leading-none transition-colors"
           title="Remove mix"
         >
           ✕
@@ -417,9 +442,9 @@ export function Soundboard({ config, stems, onChange }: Props) {
   const unmatchedStems = stems.filter((s) => !findStemBus(config.buses, s.filename));
 
   return (
-    <div className="space-y-3">
-      {/* Mix tabs */}
-      <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
+    <div>
+      {/* Mix tabs strip — connects flush to the fader panel below */}
+      <div className="flex items-end gap-0.5 border-b border-slate-700">
         {config.mixes.map((m, i) => (
           <MixTab
             key={i}
@@ -433,14 +458,14 @@ export function Soundboard({ config, stems, onChange }: Props) {
         ))}
         <button
           onClick={addMix}
-          className="px-3 py-1 rounded-md text-sm font-medium bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 border border-dashed border-slate-600 transition-colors"
+          className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors"
         >
           + Add mix
         </button>
       </div>
 
-      {/* Fader panel */}
-      <div className="bg-slate-800 rounded-xl p-4 space-y-4">
+      {/* Fader panel — rounded bottom only so it reads as a single unit with the tab strip */}
+      <div className="bg-slate-800 rounded-b-xl p-4 space-y-4">
         {/* Primary row: one channel per bus */}
         <div className="overflow-x-auto">
           <div className="flex gap-4 min-w-max items-start">
@@ -540,7 +565,7 @@ export function Soundboard({ config, stems, onChange }: Props) {
         )}
       </div>
 
-      <p className="text-[11px] text-slate-600">
+      <p className="mt-3 text-[11px] text-slate-600">
         {expandedBus
           ? `${expandedBus.bus.name}: fader = offset from bus · ▲ to collapse`
           : 'Bus fader = gain for all stems in that bus · ▼ to see individual stems · Double-click tab to rename'}
