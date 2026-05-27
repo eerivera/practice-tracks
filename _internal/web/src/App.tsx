@@ -36,6 +36,7 @@ export function App() {
   const [skippedCount, setSkippedCount] = useState(0);
   const [fileCount, setFileCount] = useState(0);
   const [showForceModal, setShowForceModal] = useState(false);
+  const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
   // Set to true when the user dismisses the "existing output" warning by clicking
   // "Overwrite existing". The subsequent Normalize/Mix button run will use force=true.
   const [forceNextRun, setForceNextRun] = useState(false);
@@ -321,8 +322,11 @@ export function App() {
 
   async function handleSwitchFolder(): Promise<void> {
     if (!api.switchToFsa) return;
+    setShowSwitchConfirm(false);
     try {
       const info = await api.switchToFsa();
+      // Clear any in-flight workflow state before loading the new store's songs.
+      handleReset();
       setStorageInfo(info);
       // Reload both lists from the new store — no page reload needed.
       const [outputs, songs] = await Promise.all([api.getOutputs(), api.listSongs()]);
@@ -331,6 +335,16 @@ export function App() {
       setSelectedSongDir(songs.length > 0 ? songs[songs.length - 1] : null);
     } catch {
       // User cancelled the picker — stay on current storage.
+    }
+  }
+
+  // Shows a confirmation modal when switching folders mid-session; calls
+  // handleSwitchFolder directly when already on the home screen.
+  function handleSwitchFolderClick() {
+    if (phase !== 'idle') {
+      setShowSwitchConfirm(true);
+    } else {
+      void handleSwitchFolder();
     }
   }
 
@@ -363,6 +377,32 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
+      {/* Switch folder confirmation modal — shown when switching away from a non-idle phase */}
+      {showSwitchConfirm && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-slate-800 rounded-2xl p-6 max-w-sm mx-4 space-y-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-white">Switch storage folder?</h3>
+            <p className="text-slate-300 text-sm">
+              Your current session will be cleared and you&apos;ll return to the home screen.
+            </p>
+            <div className="flex gap-3 justify-end pt-1">
+              <button
+                onClick={() => { setShowSwitchConfirm(false); }}
+                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void handleSwitchFolder(); }}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+              >
+                Switch folder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Force reprocess modal */}
       {showForceModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -407,7 +447,7 @@ export function App() {
                   We recommend{' '}
                   {api.switchToFsa && 'showDirectoryPicker' in window ? (
                     <button
-                      onClick={() => { void handleSwitchFolder(); }}
+                      onClick={() => { handleSwitchFolderClick(); }}
                       className="underline font-medium text-amber-100 hover:text-white transition-colors"
                     >
                       saving to a folder instead
@@ -427,7 +467,7 @@ export function App() {
                 </span>
                 {api.switchToFsa && 'showDirectoryPicker' in window && (
                   <button
-                    onClick={() => { void handleSwitchFolder(); }}
+                    onClick={() => { handleSwitchFolderClick(); }}
                     className="ml-auto shrink-0 underline text-slate-400 hover:text-slate-200 transition-colors"
                   >
                     Switch folder
