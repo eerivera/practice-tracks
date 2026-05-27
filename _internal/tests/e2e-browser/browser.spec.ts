@@ -203,6 +203,44 @@ test('Upload/Download config hidden before stems loaded, visible after', async (
   await expect(page.getByRole('button', { name: 'Download config' })).toBeVisible();
 });
 
+// ── Partial / stale localStorage config (regression) ─────────────────────────
+// Bug: getConfig() returned JSON.parse(saved) as Config without validation.
+// If localStorage held a partial/old config missing required array fields
+// (buses, mixes), the Soundboard crashed with "Cannot read properties of
+// undefined (reading 'map')".
+// Fix: getConfig() spreads DEFAULT_CONFIG under the parsed value so required
+// fields always have a fallback.
+
+test('Soundboard renders without crash when localStorage config is missing buses/mixes', async ({ page }) => {
+  await page.goto('/');
+
+  // Inject a partial config that is missing buses and mixes — simulates a
+  // stale localStorage entry from an older schema version.
+  // normalize: false so the action button reads "Mix Practice Tracks" (deterministic).
+  await page.evaluate(() => {
+    localStorage.setItem('practiceTracksConfig', JSON.stringify({
+      normalize: false,
+      target_lufs: -23,
+      output_format: 'mp3',
+      // buses and mixes intentionally absent
+    }));
+  });
+
+  // Seed a song with stems so the Re-mix button appears after reload.
+  await seedOpfsOutputs(page, SONG_WITH_STEMS);
+  await page.reload();
+
+  // Re-mix transitions to extracted phase where the Soundboard renders.
+  await expect(page.getByRole('heading', { name: SONG_WITH_STEMS.displayName })).toBeVisible({ timeout: 5000 });
+  await page.getByRole('button', { name: 'Re-mix' }).click();
+
+  // The Soundboard must render — at least one bus channel (fader) must be visible.
+  // A crash would leave us stuck on the home screen or show a blank panel.
+  await expect(page.getByRole('button', { name: 'Mix Practice Tracks' })).toBeVisible({ timeout: 5000 });
+  // The tab strip must render (requires config.mixes.map to succeed).
+  await expect(page.getByText('full', { exact: true })).toBeVisible();
+});
+
 // ── Add more zips ─────────────────────────────────────────────────────────────
 // Once files are queued the user can append additional zips without cancelling.
 
