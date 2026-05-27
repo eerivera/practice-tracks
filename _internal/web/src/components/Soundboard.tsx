@@ -453,23 +453,28 @@ export function Soundboard({ config, stems, onChange }: Props) {
   return (
     <div>
       {/* Mix tabs strip.
-          overflow-x-auto + [overflow-y:clip]: horizontal scroll without forcing
-          overflow-y to 'auto' (CSS spec only converts 'visible→auto', not 'clip').
-          pb-[2px] -mb-[2px]: gives the active tab's -mb-px 2 px of padding
-          headroom so it renders above the clip boundary while the panel stays
-          flush below. Each tab is shrink-0 to prevent compression. */}
-      <div className="flex items-end gap-0.5 border-b border-slate-700 overflow-x-auto [overflow-y:clip] pb-[2px] -mb-[2px]">
-        {config.mixes.map((m, i) => (
-          <MixTab
-            key={i}
-            name={m.name}
-            selected={i === selected}
-            onSelect={() => { setSelected(i); setExpandedBusIdx(null); }}
-            onRename={(name) => { renameMix(i, name); }}
-            onRemove={() => { removeMix(i); }}
-            removable={config.mixes.length > 1}
-          />
-        ))}
+          Outer wrapper: border-b + items-end alignment; no overflow set here so the
+          "+ Add mix" button is always visible and never scrolls away.
+          Inner scrollable: overflow-x-auto + [overflow-y:clip] (CSS spec only converts
+          'visible→auto', not 'clip', so y stays clipped while x scrolls).
+          pb-[2px] -mb-[2px]: gives the active tab's -mb-px 2 px of headroom inside the
+          clip boundary so it renders above the border without any gap.
+          Each tab is shrink-0 to prevent compression; flex-1 min-w-0 lets the inner
+          div shrink and scroll rather than pushing the button off-screen. */}
+      <div className="flex items-end gap-0.5 border-b border-slate-700">
+        <div className="flex items-end gap-0.5 overflow-x-auto [overflow-y:clip] pb-[2px] -mb-[2px] flex-1 min-w-0">
+          {config.mixes.map((m, i) => (
+            <MixTab
+              key={i}
+              name={m.name}
+              selected={i === selected}
+              onSelect={() => { setSelected(i); setExpandedBusIdx(null); }}
+              onRename={(name) => { renameMix(i, name); }}
+              onRemove={() => { removeMix(i); }}
+              removable={config.mixes.length > 1}
+            />
+          ))}
+        </div>
         <button
           onClick={addMix}
           className="shrink-0 px-3 py-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors"
