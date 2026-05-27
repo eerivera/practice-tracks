@@ -4,6 +4,6 @@ export default defineConfig({
   test: {
     globals: false,
     // Exclude Playwright E2E specs — they use @playwright/test, not vitest.
-    exclude: ['**/e2e/**', '**/node_modules/**'],
+    exclude: ['**/e2e/**', '**/e2e-browser/**', '**/node_modules/**'],
   },
 });

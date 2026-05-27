@@ -19,6 +19,7 @@
     "test:watch": "vitest --config _internal/vitest.config.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:browser": "playwright test --config playwright.browser.config.ts",
     "playwright:install": "playwright install chromium",
     "build": "tsc --project _internal/tsconfig.json",
     "check": "npm run type-check && npm run lint && npm run test",
