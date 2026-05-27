@@ -43,7 +43,7 @@ export function isFsaSupported(): boolean {
  * Show the OS folder picker, persist the handle in IndexedDB, return the store.
  * MUST be called from a user-gesture handler (click, etc.).
  */
-export async function createFsaStore(): Promise<{ store: StemStore; info: StorageInfo }> {
+export async function createFsaStore(): Promise<{ store: StemStore; info: StorageInfo; handle: FileSystemDirectoryHandle }> {
   // showDirectoryPicker is not yet declared in TypeScript's DOM lib; access via cast.
   type PickFn = (opts: { mode: 'readwrite' }) => Promise<FileSystemDirectoryHandle>;
   const pick = (window as unknown as { showDirectoryPicker: PickFn }).showDirectoryPicker;
@@ -52,6 +52,7 @@ export async function createFsaStore(): Promise<{ store: StemStore; info: Storag
   return {
     store: new StemStore(handle),
     info: { type: 'fsa', label: handle.name },
+    handle,
   };
 }
 
@@ -60,7 +61,7 @@ export async function createFsaStore(): Promise<{ store: StemStore; info: Storag
  * a new picker.  Returns null when no handle is stored or when permission has
  * been revoked and can only be re-granted via a user gesture.
  */
-export async function restoreFsaStore(): Promise<{ store: StemStore; info: StorageInfo } | null> {
+export async function restoreFsaStore(): Promise<{ store: StemStore; info: StorageInfo; handle: FileSystemDirectoryHandle } | null> {
   try {
     const handle = await loadFsaHandle();
     if (!handle) return null;
@@ -74,6 +75,7 @@ export async function restoreFsaStore(): Promise<{ store: StemStore; info: Stora
     return {
       store: new StemStore(handle),
       info: { type: 'fsa', label: handle.name },
+      handle,
     };
   } catch {
     return null;

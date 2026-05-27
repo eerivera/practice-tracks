@@ -6,7 +6,7 @@
  * context, so OPFS starts empty every time.
  */
 import { test, expect } from '@playwright/test';
-import { seedOpfsOutputs, mockFsaFolderWithSong } from './helpers.js';
+import { seedOpfsOutputs, mockFsaFolderWithSong, mockFsaFolderWithConfig } from './helpers.js';
 
 const SONG = {
   zipName: 'TestSong-Ab-68.00bpm',
@@ -420,6 +420,76 @@ test('cancelling the confirmation keeps the session intact', async ({ page }) =>
   await page.locator('.fixed.inset-0').getByRole('button', { name: 'Cancel' }).click();
   await expect(page.getByRole('heading', { name: 'Switch storage folder?' })).not.toBeVisible();
   await expect(page.getByText('1 zip ready')).toBeVisible();
+});
+
+// ── FSA config persistence ────────────────────────────────────────────────────
+// When the user is in FSA mode, config should live in the selected folder as
+// practice-tracks-config.yaml so it travels with the stems.
+// Two invariants:
+//   • Switching to a folder that already has the YAML loads its values into the UI.
+//   • "Set new default" writes the YAML to the folder root.
+
+test('config YAML in FSA folder is loaded when switching to that folder', async ({ page }) => {
+  await page.goto('/');
+
+  // Seed a mock FSA folder with a config that has normalize: true and a custom LUFS.
+  // We'll verify these values appear in the UI after switching.
+  await mockFsaFolderWithConfig(
+    page,
+    FSA_SONG,
+    'normalize: true\ntarget_lufs: -16\n',
+  );
+
+  // Switch to the FSA folder (OPFS amber warning link triggers the picker).
+  await expect(
+    page.getByRole('button', { name: 'saving to a folder instead' })
+  ).toBeVisible({ timeout: 5000 });
+  await page.getByRole('button', { name: 'saving to a folder instead' }).click();
+
+  // Wait for the FSA info bar to confirm the switch completed.
+  await expect(page.getByRole('button', { name: 'Switch folder' })).toBeVisible({ timeout: 5000 });
+
+  // The normalize checkbox should be checked (from the YAML).
+  await expect(
+    page.locator('label').filter({ hasText: 'Normalize stems' }).locator('input[type="checkbox"]')
+  ).toBeChecked({ timeout: 3000 });
+
+  // The LUFS target input must show -16.
+  await expect(
+    page.locator('input[type="number"][min="-40"]')
+  ).toHaveValue('-16');
+});
+
+test('"Set new default" saves config as YAML to the FSA folder', async ({ page }) => {
+  await page.goto('/');
+  await mockFsaFolderWithSong(page, FSA_SONG);
+
+  // Switch to FSA mode.
+  await expect(
+    page.getByRole('button', { name: 'saving to a folder instead' })
+  ).toBeVisible({ timeout: 5000 });
+  await page.getByRole('button', { name: 'saving to a folder instead' }).click();
+  await expect(page.getByRole('button', { name: 'Switch folder' })).toBeVisible({ timeout: 5000 });
+
+  // Toggle normalize to make configDirty (and make the "Set new default" button active).
+  await page.locator('label').filter({ hasText: 'Normalize stems' }).locator('input[type="checkbox"]').click();
+  await expect(page.getByText('● unsaved')).toBeVisible();
+
+  // Save config.
+  await page.getByRole('button', { name: 'Set new default' }).click();
+
+  // The file should now exist in the mock FSA folder root.
+  const fileExists = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const mockDir = await root.getDirectoryHandle('mock-fsa');
+    try {
+      await mockDir.getFileHandle('practice-tracks-config.yaml');
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  expect(fileExists).toBe(true);
 });
 
 test('confirming the switch resets to the home screen', async ({ page }) => {

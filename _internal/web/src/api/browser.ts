@@ -1,4 +1,5 @@
 import { unzipSync, zipSync } from 'fflate';
+import yaml from 'js-yaml';
 import { buildMixInputs } from '@common/mixer.js';
 import type { Config, StemFile, QueueStatus, SongOutputs } from '../types.js';
 import type { ProcessingApi } from './interface.js';
@@ -76,9 +77,13 @@ export class BrowserApi implements ProcessingApi {
 
   private stemStore: StemStore | null = null;
   private storageInfo: StorageInfo | null = null;
+  // Set when the user picks (or restores) an FSA folder; null in OPFS mode.
+  private fsaRootHandle: FileSystemDirectoryHandle | null = null;
 
   // Resolved once the stem store is initialised and persisted songs are loaded.
   private readonly initPromise: Promise<void>;
+
+  private static readonly CONFIG_YAML_NAME = 'practice-tracks-config.yaml';
 
   constructor() {
     this.initPromise = this.init();
@@ -88,7 +93,7 @@ export class BrowserApi implements ProcessingApi {
     try {
       // Prefer FSA if the user previously picked a folder and permission is
       // still granted.  Fall back to OPFS silently.
-      let restored: { store: StemStore; info: StorageInfo } | null = null;
+      let restored: { store: StemStore; info: StorageInfo; handle: FileSystemDirectoryHandle } | null = null;
       if (isFsaSupported()) {
         restored = await restoreFsaStore();
       }
@@ -96,6 +101,7 @@ export class BrowserApi implements ProcessingApi {
       if (restored) {
         this.stemStore = restored.store;
         this.storageInfo = restored.info;
+        this.fsaRootHandle = restored.handle;
       } else {
         this.stemStore = await createOpfsStore();
         this.storageInfo = { type: 'opfs', label: 'Browser storage' };
@@ -176,6 +182,7 @@ export class BrowserApi implements ProcessingApi {
     // Activate the new store.
     this.stemStore = result.store;
     this.storageInfo = result.info;
+    this.fsaRootHandle = result.handle;
 
     // Populate loadedSongs and persistedOutputs from the new store
     // (mirrors what init() does after initial setup).
@@ -475,26 +482,66 @@ export class BrowserApi implements ProcessingApi {
 
   private static readonly STORAGE_KEY = 'practiceTracksConfig';
 
-  getConfig(): Promise<Config> {
+  async getConfig(): Promise<Config> {
+    // Wait for init so fsaRootHandle is set before we decide which storage to read.
+    await this.initPromise;
+
+    // In FSA mode, read config from the YAML file inside the selected folder.
+    if (this.fsaRootHandle) {
+      try {
+        const fileHandle = await this.fsaRootHandle.getFileHandle(BrowserApi.CONFIG_YAML_NAME);
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        const partial = yaml.load(text) as Partial<Config>;
+        // Merge with DEFAULT_CONFIG so required array fields (buses, mixes) are
+        // never undefined even when the file contains a partial or older-schema config.
+        return { ...DEFAULT_CONFIG, ...partial };
+      } catch {
+        // File doesn't exist yet or YAML parse error — fall through to localStorage.
+      }
+    }
+
+    // OPFS mode (or FSA file not found): read from localStorage.
     const saved = localStorage.getItem(BrowserApi.STORAGE_KEY);
     if (saved) {
       try {
-        // Merge with DEFAULT_CONFIG so required array fields (buses, mixes) are
-        // never undefined even when loading a partial or out-of-date saved config.
-        return Promise.resolve({ ...DEFAULT_CONFIG, ...(JSON.parse(saved) as Partial<Config>) });
+        return { ...DEFAULT_CONFIG, ...(JSON.parse(saved) as Partial<Config>) };
       } catch { /* fall through */ }
     }
-    return Promise.resolve(DEFAULT_CONFIG);
+    return DEFAULT_CONFIG;
   }
 
-  saveConfig(config: Config): Promise<void> {
+  async saveConfig(config: Config): Promise<void> {
+    // Always write to localStorage as a backup/fallback.
     localStorage.setItem(BrowserApi.STORAGE_KEY, JSON.stringify(config));
-    return Promise.resolve();
+
+    // In FSA mode, also write YAML to the folder root so config travels with the
+    // stems and can be inspected or shared outside the browser.
+    if (this.fsaRootHandle) {
+      try {
+        const fileHandle = await this.fsaRootHandle.getFileHandle(BrowserApi.CONFIG_YAML_NAME, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(yaml.dump(config, { lineWidth: 120 }));
+        await writable.close();
+      } catch (err) {
+        console.warn('[BrowserApi] Failed to write config to FSA folder:', err);
+      }
+    }
   }
 
-  resetConfig(): Promise<Config> {
+  async resetConfig(): Promise<Config> {
     localStorage.removeItem(BrowserApi.STORAGE_KEY);
-    return Promise.resolve(DEFAULT_CONFIG);
+
+    // In FSA mode, remove the config file from the folder (ignore if absent).
+    if (this.fsaRootHandle) {
+      try {
+        await this.fsaRootHandle.removeEntry(BrowserApi.CONFIG_YAML_NAME);
+      } catch {
+        // File may not exist — not an error.
+      }
+    }
+
+    return DEFAULT_CONFIG;
   }
 
   getStatus(): Promise<QueueStatus> {
