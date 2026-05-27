@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import type { Config, StemFile, MixDefinition, BusDefinition } from '../types.js';
 import { findStemBus, stemMatchesPattern } from '@common/mixer.js';
 
@@ -72,37 +72,45 @@ interface GainLabelProps {
 }
 
 function GainLabel({ gainDb, active, muted, excluded, onEdit }: GainLabelProps) {
-  const [editing, setEditing] = useState(false);
-  const [editVal, setEditVal] = useState('');
+  const [draft, setDraft] = useState<string | null>(null);
+  // Synchronous flag set before blur() so onBlur can distinguish Escape from Enter/click-away.
+  const escaping = useRef(false);
 
   function commit() {
-    const n = parseFloat(editVal);
-    if (!isNaN(n)) onEdit(clampDb(n));
-    setEditing(false);
+    if (draft !== null && !escaping.current) {
+      const n = parseFloat(draft);
+      if (!isNaN(n)) onEdit(clampDb(n));
+    }
+    setDraft(null);
+    escaping.current = false;
   }
 
-  const label = excluded ? '—' : muted ? 'M' : `${gainDb > 0 ? '+' : ''}${gainDb}`;
-
-  if (editing) {
-    return (
-      <input
-        autoFocus
-        className="w-12 text-center text-[11px] font-mono bg-slate-700 text-white rounded px-1 py-0.5"
-        value={editVal}
-        onChange={(e) => { setEditVal(e.target.value); }}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-      />
-    );
+  // Non-interactive labels for excluded/muted states.
+  if (excluded) {
+    return <span className="text-[11px] font-mono tabular-nums w-12 text-center text-slate-600">—</span>;
   }
+  if (muted) {
+    return <span className="text-[11px] font-mono tabular-nums w-12 text-center text-slate-600">M</span>;
+  }
+
+  // Active input — always rendered so Tab focuses it immediately without a prior click.
+  // draft=null → show formatted gainDb; draft=string → show raw user input.
+  const displayVal = draft ?? `${gainDb > 0 ? '+' : ''}${gainDb}`;
+
   return (
-    <button
-      className={`text-[11px] font-mono tabular-nums w-12 text-center rounded hover:bg-slate-700 transition-colors ${active ? 'text-slate-300' : 'text-slate-600'}`}
-      onClick={() => { if (!excluded) { setEditVal(String(gainDb)); setEditing(true); } }}
-      title={excluded ? undefined : 'Click to set gain (dB)'}
-    >
-      {label}
-    </button>
+    <input
+      type="text"
+      className={`text-[11px] font-mono tabular-nums w-12 text-center rounded bg-transparent hover:bg-slate-700 focus:bg-slate-700 focus:outline-none cursor-default focus:cursor-text transition-colors ${active ? 'text-slate-300' : 'text-slate-600'}`}
+      value={displayVal}
+      onChange={(e) => { setDraft(e.target.value); }}
+      onFocus={(e) => { setDraft(String(gainDb)); e.target.select(); }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.currentTarget.blur(); }
+        if (e.key === 'Escape') { escaping.current = true; e.currentTarget.blur(); }
+      }}
+      title="Click or tab to set gain (dB)"
+    />
   );
 }
 
