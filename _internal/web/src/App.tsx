@@ -344,10 +344,17 @@ export function App() {
       handleReset();
       setStorageInfo(info);
       // Reload both lists from the new store — no page reload needed.
-      const [outputs, songs] = await Promise.all([api.getOutputs(), api.listSongs()]);
+      const [outputs, songs, newConfig] = await Promise.all([
+        api.getOutputs(),
+        api.listSongs(),
+        api.getConfig(),
+      ]);
       setPastOutputs(outputs);
       setAvailableSongs(songs);
       setSelectedSongDir(songs.length > 0 ? songs[songs.length - 1] : null);
+      // Re-read config from the new folder — it may have its own config YAML.
+      setConfig(newConfig);
+      setConfigDirty(false);
     } catch {
       // User cancelled the picker — stay on current storage.
     }

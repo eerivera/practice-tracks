@@ -326,6 +326,8 @@ No manifest files. Songs are discovered by crawling the tree with `FileSystemDir
 
 **Storage type UI** — On load, `BrowserApi.init()` resolves to either OPFS or FSA. If OPFS, an amber warning appears ("files may be cleared by the browser") with a "saving to a folder instead" button that opens the `showDirectoryPicker` dialog. If FSA, a green info bar shows the folder name and a "Switch folder" button. Switching mid-session (when `phase !== 'idle'`) shows a confirmation modal before clearing the current session.
 
+**Config persistence in FSA mode** — In OPFS mode, config is stored as JSON in `localStorage`. In FSA mode it is additionally written as `practice-tracks-config.yaml` at the folder root, so the config travels with the stems and can be inspected or shared. `BrowserApi.getConfig()` reads the YAML file when `fsaRootHandle` is set, falling back to `localStorage` if the file doesn't exist yet. `saveConfig()` always writes both; `resetConfig()` removes the YAML file and clears `localStorage`. When `handleSwitchFolder()` completes, `App.tsx` re-reads config from the new store so the UI immediately reflects the new folder's config (if any).
+
 **Re-mix button visibility** — `BrowserApi.listSongs()` filters to songs that have stems on disk. Output-only songs (no `stems/` directory) still appear in Past Mixes for downloading, but the Re-mix button is hidden via the `canRemix` callback on `PastMixes`.
 
 ---

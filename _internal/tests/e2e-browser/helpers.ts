@@ -76,6 +76,69 @@ export async function mockFsaFolderWithSong(page: Page, opts: SeedSongParams): P
   }, opts);
 }
 
+/**
+ * Same as mockFsaFolderWithSong but also writes a `practice-tracks-config.yaml`
+ * file to the folder root so tests can verify that config is read from FSA.
+ * `configYaml` is a raw YAML string (e.g. "normalize: true\ntarget_lufs: -16\n").
+ */
+export async function mockFsaFolderWithConfig(
+  page: Page,
+  opts: SeedSongParams,
+  configYaml: string,
+): Promise<void> {
+  await page.evaluate(async ({ params, yamlText }) => {
+    async function writeBytes(
+      dir: FileSystemDirectoryHandle,
+      name: string,
+      bytes: number[],
+    ): Promise<void> {
+      const h = await dir.getFileHandle(name, { create: true });
+      const w = await h.createWritable();
+      await w.write(new Uint8Array(bytes));
+      await w.close();
+    }
+
+    async function writeText(
+      dir: FileSystemDirectoryHandle,
+      name: string,
+      text: string,
+    ): Promise<void> {
+      const h = await dir.getFileHandle(name, { create: true });
+      const w = await h.createWritable();
+      await w.write(text);
+      await w.close();
+    }
+
+    const root = await navigator.storage.getDirectory();
+    const mockDir = await root.getDirectoryHandle('mock-fsa', { create: true });
+
+    // Write the config YAML to the folder root.
+    await writeText(mockDir, 'practice-tracks-config.yaml', yamlText);
+
+    // Seed song outputs.
+    const songs = await mockDir.getDirectoryHandle('songs', { create: true });
+    const nameDir = await songs.getDirectoryHandle(params.displayName, { create: true });
+    const variantDir = await nameDir.getDirectoryHandle(params.keyBpm, { create: true });
+
+    if (params.stems && params.stems.length > 0) {
+      const stemsDir = await variantDir.getDirectoryHandle('stems', { create: true });
+      for (const stem of params.stems) {
+        await writeBytes(stemsDir, `${stem.filename}.${stem.ext}`, [0xFF, 0xFB, 0x90, 0x00]);
+      }
+    }
+
+    const outputDir = await variantDir.getDirectoryHandle('output', { create: true });
+    for (const filename of params.outputFilenames) {
+      await writeBytes(outputDir, filename, [0xFF, 0xFB, 0x90, 0x00]);
+    }
+
+    // Override picker to return this directory without a dialog.
+    type PickFn = (opts: unknown) => Promise<FileSystemDirectoryHandle>;
+    (window as unknown as { showDirectoryPicker: PickFn }).showDirectoryPicker =
+      () => Promise.resolve(mockDir);
+  }, { params: opts, yamlText: configYaml });
+}
+
 // ── OPFS seed helpers ─────────────────────────────────────────────────────────
 
 /**
