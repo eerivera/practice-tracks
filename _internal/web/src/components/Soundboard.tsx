@@ -294,10 +294,10 @@ function MixTab({ name, selected, onSelect, onRename, onRemove, removable }: Mix
     setRenaming(false);
   }
 
-  // Renaming: show an inline input inside the active-tab shell.
+  // Renaming: inline input inside the active-tab shell.
   if (renaming) {
     return (
-      <div className="relative -mb-px flex items-center px-3 py-1.5 rounded-t-lg bg-slate-800 border border-slate-700 border-b-slate-800">
+      <div className="shrink-0 relative -mb-px flex items-center px-3 py-1.5 rounded-t-lg bg-slate-800 border border-slate-700 border-b-slate-800">
         <input
           autoFocus
           className="w-24 bg-transparent text-sm font-medium text-white focus:outline-none"
@@ -310,10 +310,11 @@ function MixTab({ name, selected, onSelect, onRename, onRemove, removable }: Mix
     );
   }
 
-  // Active tab: -mb-px overlaps the bottom border of the strip so it reads as connected to the panel.
+  // Active tab: -mb-px covers the strip's border-b so the tab reads as
+  // connected to the fader panel below.
   if (selected) {
     return (
-      <div className="relative -mb-px flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg bg-slate-800 border border-slate-700 border-b-slate-800">
+      <div className="shrink-0 relative -mb-px flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg bg-slate-800 border border-slate-700 border-b-slate-800">
         <button
           onClick={onSelect}
           onDoubleClick={() => { setVal(name); setRenaming(true); }}
@@ -335,11 +336,11 @@ function MixTab({ name, selected, onSelect, onRename, onRemove, removable }: Mix
     );
   }
 
-  // Inactive tab — border on top/left/right makes the tab shape legible against
-  // the page background; border-b-0 lets the strip's bottom border show through.
+  // Inactive tab — border on top/left/right only; border-b-0 lets the
+  // strip's bottom border show through.
   return (
     <div
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg border border-slate-700/60 border-b-0 bg-slate-800/30 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 cursor-pointer transition-colors"
+      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg border border-slate-700/60 border-b-0 bg-slate-800/30 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 cursor-pointer transition-colors"
       onClick={onSelect}
       onDoubleClick={() => { setVal(name); setRenaming(true); }}
       title="Double-click to rename"
@@ -451,22 +452,38 @@ export function Soundboard({ config, stems, onChange }: Props) {
 
   return (
     <div>
-      {/* Mix tabs strip — connects flush to the fader panel below */}
+      {/* Mix tabs strip.
+          Outer wrapper: border-b + items-end; no overflow here so "+ Add mix" is
+          always pinned at the right edge regardless of tab count.
+          Inner scrollable: overflow-x-auto + [overflow-y:clip] (CSS spec only
+          converts 'visible→auto', not 'clip', so y stays clipped while x scrolls).
+          [scrollbar-gutter:stable]: always reserves the 6 px scrollbar lane so the
+          outer div height is constant whether or not tabs overflow — required for
+          the -mb calculation to hold.  Without it, -mb-[8px] would overshoot when
+          there is no overflow and no scrollbar lane exists.
+          pb-[2px]: headroom for the active tab's -mb-px inside the clip boundary.
+          -mb-[8px] = pb (2 px) + scrollbar lane (h-1.5 = 6 px): keeps outer height
+          at H so border-b stays flush with the active tab's bottom edge.
+          ::-webkit-scrollbar styles: switch Chromium from overlay (hover-only,
+          overlaps content) to classic (always visible when overflowing, sits in its
+          own lane below the tab labels). */}
       <div className="flex items-end gap-0.5 border-b border-slate-700">
-        {config.mixes.map((m, i) => (
-          <MixTab
-            key={i}
-            name={m.name}
-            selected={i === selected}
-            onSelect={() => { setSelected(i); setExpandedBusIdx(null); }}
-            onRename={(name) => { renameMix(i, name); }}
-            onRemove={() => { removeMix(i); }}
-            removable={config.mixes.length > 1}
-          />
-        ))}
+        <div className="flex items-end gap-0.5 overflow-x-auto [overflow-y:clip] pb-[2px] -mb-[8px] flex-1 min-w-0 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600">
+          {config.mixes.map((m, i) => (
+            <MixTab
+              key={i}
+              name={m.name}
+              selected={i === selected}
+              onSelect={() => { setSelected(i); setExpandedBusIdx(null); }}
+              onRename={(name) => { renameMix(i, name); }}
+              onRemove={() => { removeMix(i); }}
+              removable={config.mixes.length > 1}
+            />
+          ))}
+        </div>
         <button
           onClick={addMix}
-          className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors"
+          className="shrink-0 px-3 py-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors"
         >
           + Add mix
         </button>
