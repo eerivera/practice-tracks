@@ -30,7 +30,7 @@ export interface SeedSongParams {
   /** Mix output filenames to create under output/, e.g. ["TestSong - Full Mix.mp3"] */
   outputFilenames: readonly string[];
   /** Optional stem metadata to include in meta.json (default: []) */
-  stems?: { filename: string; ext: string }[];
+  stems?: readonly { filename: string; ext: string }[];
 }
 
 // ── FSA mock helpers ──────────────────────────────────────────────────────────

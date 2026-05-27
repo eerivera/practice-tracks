@@ -149,3 +149,69 @@ test('switching folders clears Past Mixes from the previous folder', async ({ pa
   await expect(page.getByRole('heading', { name: FSA_SONG.displayName })).toBeVisible({ timeout: 5000 });
   await expect(page.getByRole('heading', { name: SONG.displayName })).not.toBeVisible();
 });
+
+// ── Upload/Download config visibility ─────────────────────────────────────────
+// Upload config and Download config are only meaningful once a song is loaded
+// (there's a Soundboard to preview the effect).  Before stems are available
+// the buttons must be hidden to reduce clutter.
+
+const SONG_WITH_STEMS = {
+  ...SONG,
+  stems: [
+    { filename: 'Drums.wav', ext: 'wav' },
+    { filename: 'Bass.wav', ext: 'wav' },
+  ],
+} as const;
+
+test('Upload/Download config hidden before stems loaded, visible after', async ({ page }) => {
+  await page.goto('/');
+  // Wait for init (amber OPFS warning confirms BrowserApi.init() resolved and
+  // config was fetched — the earliest moment these buttons could appear).
+  await expect(
+    page.getByText('may be cleared by the browser', { exact: false })
+  ).toBeVisible({ timeout: 5000 });
+
+  // No song loaded — buttons must be absent.
+  await expect(page.getByRole('button', { name: 'Upload config' })).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download config' })).not.toBeVisible();
+
+  // Seed a song WITH stem metadata so getStems() returns a non-empty list.
+  await seedOpfsOutputs(page, SONG_WITH_STEMS);
+  await page.reload();
+
+  // Wait for the song to appear in Past Mixes (confirms stems are also loaded).
+  await expect(page.getByRole('heading', { name: SONG_WITH_STEMS.displayName })).toBeVisible({ timeout: 5000 });
+
+  // Both buttons must now be visible.
+  await expect(page.getByRole('button', { name: 'Upload config' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download config' })).toBeVisible();
+});
+
+// ── Add more zips ─────────────────────────────────────────────────────────────
+// Once files are queued the user can append additional zips without cancelling.
+
+test('"Add more zips" appends files and updates the count', async ({ page }) => {
+  await page.goto('/');
+
+  // A minimal valid-ish zip end-of-central-directory record (22 bytes).
+  const fakeZipBytes = Buffer.from([
+    0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+
+  // Trigger the DropZone hidden input to reach files_selected phase.
+  await page.locator('input[type="file"][accept=".zip"]').setInputFiles({
+    name: 'track1.zip',
+    mimeType: 'application/zip',
+    buffer: fakeZipBytes,
+  });
+  await expect(page.getByText('1 zip ready')).toBeVisible({ timeout: 3000 });
+
+  // The DropZone is now gone; the add-more input is the only .zip input on the page.
+  await page.locator('input[type="file"][accept=".zip"]').setInputFiles({
+    name: 'track2.zip',
+    mimeType: 'application/zip',
+    buffer: fakeZipBytes,
+  });
+  await expect(page.getByText('2 zips ready')).toBeVisible({ timeout: 3000 });
+});

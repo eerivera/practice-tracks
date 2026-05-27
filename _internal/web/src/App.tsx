@@ -44,6 +44,7 @@ export function App() {
   // Incrementing this triggers a re-fetch of normalizeCache after normalization.
   const [cacheRefetchTick, setCacheRefetchTick] = useState(0);
   const filesRef = useRef<File[] | null>(null);
+  const addMoreInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const sessionIdRef = useRef<string>(crypto.randomUUID());
   const esRef = useRef<EventSource | null>(null);
@@ -160,6 +161,14 @@ export function App() {
     filesRef.current = files;
     setFileCount(files.length);
     setPhase('files_selected');
+  }
+
+  function handleAddMoreFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const newFiles = Array.from(e.target.files ?? []).filter((f) => f.name.toLowerCase().endsWith('.zip'));
+    if (newFiles.length === 0) return;
+    filesRef.current = [...(filesRef.current ?? []), ...newFiles];
+    setFileCount(filesRef.current.length);
+    e.target.value = '';
   }
 
   function handleExtract() {
@@ -445,6 +454,21 @@ export function App() {
                 Cancel
               </button>
             </div>
+            {/* Add more zips without losing the ones already queued. */}
+            <input
+              ref={addMoreInputRef}
+              type="file"
+              multiple
+              accept=".zip"
+              className="hidden"
+              onChange={handleAddMoreFiles}
+            />
+            <button
+              onClick={() => { addMoreInputRef.current?.click(); }}
+              className="text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              + Add more zips
+            </button>
           </div>
         )}
 
@@ -568,29 +592,35 @@ export function App() {
               </div>
             )}
 
-            {/* Row 2: config file actions + set/restore default */}
+            {/* Row 2: config file actions + set/restore default.
+                Upload/Download are only relevant once a song is loaded so the
+                user has something concrete to inspect or customise. */}
             <div className="flex items-center gap-2 flex-wrap">
-              <input
-                ref={uploadInputRef}
-                type="file"
-                accept=".yaml,.yml"
-                className="hidden"
-                onChange={handleUploadConfig}
-              />
-              <button
-                onClick={() => { uploadInputRef.current?.click(); }}
-                className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                title="Upload a saved config file"
-              >
-                Upload config
-              </button>
-              <button
-                onClick={handleDownloadConfig}
-                className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
-                title="Download current config as YAML"
-              >
-                Download config
-              </button>
+              {showSoundboard && (
+                <>
+                  <input
+                    ref={uploadInputRef}
+                    type="file"
+                    accept=".yaml,.yml"
+                    className="hidden"
+                    onChange={handleUploadConfig}
+                  />
+                  <button
+                    onClick={() => { uploadInputRef.current?.click(); }}
+                    className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                    title="Upload a saved config file"
+                  >
+                    Upload config
+                  </button>
+                  <button
+                    onClick={handleDownloadConfig}
+                    className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                    title="Download current config as YAML"
+                  >
+                    Download config
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => { void handleResetConfig(); }}
                 className="px-2.5 py-1 rounded-md text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
