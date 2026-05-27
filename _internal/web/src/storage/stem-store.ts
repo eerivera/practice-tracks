@@ -5,20 +5,23 @@
  * The caller is responsible for obtaining the root; this class handles all I/O.
  *
  * Layout under root:
- *   songs-list.json            → string[]  (names of all saved song directories)
- *   songs/<songDir>/
- *     meta.json                → { displayName, keyBpm, stems: [{filename, ext}] }
+ *   songs/<displayName>/<keyBpm>/
  *     stems/<filename>.<ext>   (raw audio extracted from zip)
  *     normalized/
- *       meta.json              → { target_lufs: number }
- *       <filename>.wav         (normalized audio; paired with meta.json)
+ *       meta.json              → { target_lufs: number }   (LUFS target only)
+ *       <filename>.wav         (normalized audio)
+ *     output/
+ *       <mix>.mp3              (finished mix files)
  *
- * No directory iteration is used anywhere — all reads are by known filename.
- * This avoids the missing FileSystemDirectoryHandle.entries() type in TypeScript's
- * DOM lib (the method exists in browsers but isn't declared in lib.dom.d.ts yet).
+ * No manifest files are written.  Songs, stems, and outputs are discovered
+ * entirely by crawling the directory tree via FileSystemDirectoryHandle.entries().
  */
 
 export interface StoredSong {
+  /** Internal identifier derived from directory names: "<displayName>-<keyBpm>".
+   *  Round-trips through physicalPath() to recover the correct FS path.
+   *  TODO: replace with a proper (displayName, keyBpm) triple once the server-
+   *  side pipeline and App.tsx identifier contract are updated (#refactor-triple). */
   songDir: string;
   displayName: string;
   /** Formatted key/BPM, e.g. "Ab-68bpm".  Empty string when not parseable. */
@@ -54,59 +57,64 @@ export class StemStore {
     return songNameDir.getDirectoryHandle(keyBpm, { create });
   }
 
-  // ── Song-list manifest ────────────────────────────────────────────────────────
-  // We maintain a root-level songs-list.json rather than iterating the songs/
-  // directory (FileSystemDirectoryHandle.entries() is not in TypeScript's DOM lib).
-
-  private async readSongList(): Promise<string[]> {
-    try {
-      return await readJson<string[]>(this.root, 'songs-list.json');
-    } catch {
-      return [];
-    }
-  }
-
-  private async appendToSongList(songDir: string): Promise<void> {
-    const existing = await this.readSongList();
-    if (!existing.includes(songDir)) {
-      await writeJson(this.root, 'songs-list.json', [...existing, songDir]);
-    }
-  }
-
   // ── Raw stem storage ─────────────────────────────────────────────────────────
 
   async saveSong(
     songDir: string,
-    displayName: string,
-    keyBpm: string,
+    _displayName: string,
+    _keyBpm: string,
     stems: { filename: string; ext: string; data: Uint8Array }[],
   ): Promise<void> {
     const dir = await this.getSongDir(songDir, true);
-    await writeJson(dir, 'meta.json', {
-      displayName,
-      keyBpm,
-      stems: stems.map((s) => ({ filename: s.filename, ext: s.ext })),
-    });
     const stemsDir = await dir.getDirectoryHandle('stems', { create: true });
     for (const stem of stems) {
       await writeFile(stemsDir, `${stem.filename}.${stem.ext}`, stem.data);
     }
-    await this.appendToSongList(songDir);
+    // No meta.json or songs-list.json written — songs are discovered by
+    // crawling the directory tree on load.
   }
 
   async listSongs(): Promise<StoredSong[]> {
-    const songDirs = await this.readSongList();
     const results: StoredSong[] = [];
-    for (const songDir of songDirs) {
-      try {
-        const dir = await this.getSongDir(songDir, false);
-        const meta = await readJson<{ displayName: string; keyBpm?: string; stems: { filename: string; ext: string }[] }>(
-          dir,
-          'meta.json',
-        );
-        results.push({ songDir, displayName: meta.displayName, keyBpm: meta.keyBpm ?? '', stems: meta.stems });
-      } catch { /* skip corrupt or deleted entries */ }
+    let songsDir: FileSystemDirectoryHandle;
+    try {
+      songsDir = await this.root.getDirectoryHandle('songs');
+    } catch {
+      return []; // songs/ not yet created — that's fine
     }
+
+    for await (const [displayName, nameHandle] of entriesOf(songsDir)) {
+      if (nameHandle.kind !== 'directory') continue;
+      const nameDir = nameHandle as FileSystemDirectoryHandle;
+
+      // Two-level: songs/<displayName>/<keyBpm>/
+      // Any subdirectory that is not a known data directory is treated as a
+      // key/BPM variant.  Known data directories (stems/, output/, normalized/)
+      // belong to the one-level (no key/BPM) structure only.
+      const DATA_DIRS = new Set(['stems', 'output', 'normalized']);
+      let foundVariant = false;
+      for await (const [keyBpm, variantHandle] of entriesOf(nameDir)) {
+        if (variantHandle.kind !== 'directory' || DATA_DIRS.has(keyBpm)) continue;
+        const variantDir = variantHandle as FileSystemDirectoryHandle;
+        // Any non-data-dir subdirectory is a valid key/BPM variant — stems may be
+        // absent if only output files exist (e.g. a song loaded via Re-mix).
+        const stems = await readStemsDir(variantDir);
+        results.push({
+          songDir: `${displayName}-${keyBpm}`,
+          displayName,
+          keyBpm,
+          stems: stems ?? [],
+        });
+        foundVariant = true;
+      }
+
+      // One-level fallback: songs/<displayName>/stems/ (no key/BPM suffix)
+      if (!foundVariant) {
+        const stems = await readStemsDir(nameDir);
+        results.push({ songDir: displayName, displayName, keyBpm: '', stems: stems ?? [] });
+      }
+    }
+
     return results;
   }
 
@@ -114,23 +122,24 @@ export class StemStore {
     songDir: string,
   ): Promise<{ filename: string; ext: string; data: Uint8Array }[]> {
     const dir = await this.getSongDir(songDir, false);
-    const meta = await readJson<{ stems: { filename: string; ext: string }[] }>(dir, 'meta.json');
     const stemsDir = await dir.getDirectoryHandle('stems');
-    return Promise.all(
-      meta.stems.map(async (stem) => {
-        const handle = await stemsDir.getFileHandle(`${stem.filename}.${stem.ext}`);
-        const file = await handle.getFile();
-        return { filename: stem.filename, ext: stem.ext, data: new Uint8Array(await file.arrayBuffer()) };
-      }),
-    );
+    const results: { filename: string; ext: string; data: Uint8Array }[] = [];
+    for await (const [name, handle] of entriesOf(stemsDir)) {
+      if (handle.kind !== 'file') continue;
+      const dot = name.lastIndexOf('.');
+      if (dot < 0) continue;
+      const file = await (handle as FileSystemFileHandle).getFile();
+      results.push({
+        filename: name.slice(0, dot),
+        ext: name.slice(dot + 1),
+        data: new Uint8Array(await file.arrayBuffer()),
+      });
+    }
+    return results;
   }
 
   // ── Mix output ───────────────────────────────────────────────────────────────
 
-  /**
-   * Persist finished mix files under songs/<displayName>/<keyBpm>/output/.
-   * Called after mixSongs completes for a song.
-   */
   async saveOutput(
     songDir: string,
     files: { filename: string; data: Uint8Array }[],
@@ -142,23 +151,13 @@ export class StemStore {
     }
   }
 
-  /**
-   * Returns all audio mix files stored under songs/<displayName>/<keyBpm>/output/.
-   * Uses FileSystemDirectoryHandle.entries() (exists in browsers, missing from TS DOM lib).
-   */
   async loadAllOutputs(songDir: string): Promise<{ filename: string; data: Uint8Array }[]> {
     try {
       const dir = await this.getSongDir(songDir, false);
       const outputDir = await dir.getDirectoryHandle('output');
-
-      // entries() is present in browsers but not yet declared in lib.dom.d.ts.
-      type IterableDir = FileSystemDirectoryHandle & {
-        entries(): AsyncIterable<[string, FileSystemHandle]>;
-      };
       const AUDIO_RE = /\.(m4a|mp3|wav|aiff?)$/i;
       const results: { filename: string; data: Uint8Array }[] = [];
-
-      for await (const [name, handle] of (outputDir as unknown as IterableDir).entries()) {
+      for await (const [name, handle] of entriesOf(outputDir)) {
         if (handle.kind !== 'file' || !AUDIO_RE.test(name)) continue;
         const file = await (handle as FileSystemFileHandle).getFile();
         results.push({ filename: name, data: new Uint8Array(await file.arrayBuffer()) });
@@ -201,17 +200,14 @@ export class StemStore {
     const normMeta = await this.getNormalizeMeta(songDir);
     if (normMeta?.target_lufs !== targetLufs) return null;
     try {
-      // Load stem names from the song meta (avoids directory iteration).
       const dir = await this.getSongDir(songDir, false);
-      const songMeta = await readJson<{ stems: { filename: string }[] }>(dir, 'meta.json');
       const normDir = await dir.getDirectoryHandle('normalized');
       const results: { filename: string; data: Uint8Array }[] = [];
-      for (const stem of songMeta.stems) {
-        try {
-          const handle = await normDir.getFileHandle(`${stem.filename}.wav`);
-          const file = await handle.getFile();
-          results.push({ filename: stem.filename, data: new Uint8Array(await file.arrayBuffer()) });
-        } catch { /* stem not yet normalized; skip */ }
+      for await (const [name, handle] of entriesOf(normDir)) {
+        if (handle.kind !== 'file' || name === 'meta.json' || !/\.wav$/i.test(name)) continue;
+        const file = await (handle as FileSystemFileHandle).getFile();
+        const dot = name.lastIndexOf('.');
+        results.push({ filename: name.slice(0, dot), data: new Uint8Array(await file.arrayBuffer()) });
       }
       return results.length > 0 ? results : null;
     } catch {
@@ -248,4 +244,40 @@ async function readJson<T>(dir: FileSystemDirectoryHandle, name: string): Promis
   const handle = await dir.getFileHandle(name);
   const file = await handle.getFile();
   return JSON.parse(await file.text()) as T;
+}
+
+/**
+ * Thin wrapper over FileSystemDirectoryHandle.entries(), which browsers support
+ * but TypeScript's lib.dom.d.ts does not yet declare.
+ */
+function entriesOf(
+  dir: FileSystemDirectoryHandle,
+): AsyncIterable<[string, FileSystemHandle]> {
+  type IterableDir = FileSystemDirectoryHandle & {
+    entries(): AsyncIterable<[string, FileSystemHandle]>;
+  };
+  return (dir as unknown as IterableDir).entries();
+}
+
+/**
+ * Reads all files in a stems/ subdirectory and returns their name+ext pairs.
+ * Returns null when the stems/ directory doesn't exist (caller should skip).
+ */
+async function readStemsDir(
+  songVariantDir: FileSystemDirectoryHandle,
+): Promise<{ filename: string; ext: string }[] | null> {
+  let stemsDir: FileSystemDirectoryHandle;
+  try {
+    stemsDir = await songVariantDir.getDirectoryHandle('stems');
+  } catch {
+    return null; // no stems/ directory — not a fully-saved song
+  }
+  const stems: { filename: string; ext: string }[] = [];
+  for await (const [name, handle] of entriesOf(stemsDir)) {
+    if (handle.kind !== 'file') continue;
+    const dot = name.lastIndexOf('.');
+    if (dot < 0) continue;
+    stems.push({ filename: name.slice(0, dot), ext: name.slice(dot + 1) });
+  }
+  return stems;
 }

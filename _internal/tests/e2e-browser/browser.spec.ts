@@ -158,8 +158,8 @@ test('switching folders clears Past Mixes from the previous folder', async ({ pa
 const SONG_WITH_STEMS = {
   ...SONG,
   stems: [
-    { filename: 'Drums.wav', ext: 'wav' },
-    { filename: 'Bass.wav', ext: 'wav' },
+    { filename: 'Drums', ext: 'wav' },
+    { filename: 'Bass', ext: 'wav' },
   ],
 } as const;
 
