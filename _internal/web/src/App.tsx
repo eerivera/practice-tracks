@@ -441,22 +441,29 @@ export function App() {
       )}
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        <header className="space-y-1">
-          <div className="flex items-baseline justify-between gap-4">
-            <h1 className="text-2xl font-semibold text-white">Practice Tracks</h1>
-            {/* Repo link — shown in browser/static build only; server users already know where they are */}
-            {api.switchToFsa && (
-              <a
-                href="https://github.com/eerivera/practice-tracks"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-slate-500 hover:text-slate-300 transition-colors shrink-0"
-              >
-                GitHub ↗
-              </a>
-            )}
-          </div>
+        <header className="space-y-3">
+          <h1 className="text-2xl font-semibold text-white">Practice Tracks</h1>
           <p className="text-slate-400 text-sm">Drop your Multitracks zips to generate rehearsal mixes</p>
+          {/* Docs banner — browser/static build only */}
+          {api.switchToFsa && (
+            <a
+              href="https://github.com/eerivera/practice-tracks"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-4 py-3 bg-indigo-900/40 border border-indigo-700/50 rounded-xl hover:bg-indigo-900/60 hover:border-indigo-600/60 transition-colors group"
+            >
+              <span className="text-2xl leading-none">📖</span>
+              <span className="flex-1">
+                <span className="block text-sm font-medium text-indigo-200 group-hover:text-white transition-colors">
+                  New here? Read the setup guide and documentation
+                </span>
+                <span className="block text-xs text-indigo-400 mt-0.5">
+                  github.com/eerivera/practice-tracks
+                </span>
+              </span>
+              <span className="text-indigo-400 group-hover:text-indigo-200 transition-colors text-lg leading-none">→</span>
+            </a>
+          )}
           {/* Storage notice — browser mode only.  Shows where stems are persisted. */}
           {storageInfo && (
             storageInfo.type === 'opfs' ? (
@@ -748,6 +755,10 @@ export function App() {
             canRemix={canRemix}
           />
         </div>
+
+        <footer className="pt-4 border-t border-slate-800 text-center text-xs text-slate-600">
+          © {new Date().getFullYear()} Elijah Rivera. All rights reserved.
+        </footer>
       </div>
     </div>
   );
