@@ -18,7 +18,7 @@ Primary workflow: drop zips in `queue-zips/` → `npm run mix -- run` → mixes 
 - **Runtime:** Node.js ≥ 18 local; browser build live (deployed to GitHub Pages via WASM backend)
 - **Audio:** `NativeFFmpegBackend` (system ffmpeg) or `WasmFFmpegBackend` (@ffmpeg/ffmpeg), auto-detected
 - **Config:** YAML 3-layer merge: built-in defaults → `config/default_mix.yaml` → `songs/<name>/mix.yaml`. Schema: `buses[].contains` patterns, per-mix `bus_gains` + `stem_gains`, global `stem_gains`. No `track_rules`.
-- **Tooling:** `tsx` dev, `vitest` tests, `typescript-eslint`, `npm run check` = type-check + lint + test
+- **Tooling:** `tsx` dev, `vitest` tests, `typescript-eslint`, `npm run check:light` = type-check + lint + unit tests; `npm run check` = `check:light` + `test:e2e` + `test:e2e:browser` (full gate)
 
 ---
 
@@ -76,8 +76,25 @@ AG, Bass, BGVS, Choir, Click Track, Drums (Live), EG 1/2/3, FX, Guide, Keys 1-5,
 ## Browser Frontend Notes
 
 - PCO features: hidden until user pastes PAT in a Settings panel and it validates. Do NOT render PCO UI on initial load.
-- WASM backend I/O: needs File API (input) + Blob download (output) swap. See TODO in `src/backend/wasm.ts`.
 - Environment detection: `typeof process !== 'undefined' && process.env.PCO_APP_ID` for Node; browser has no env, so PCO gated by settings panel.
+
+### Browser-mode storage (StemStore)
+
+`_internal/web/src/storage/stem-store.ts` — manifest-free, works with any `FileSystemDirectoryHandle` (OPFS default or FSA folder).
+
+Layout: `songs/<displayName>/<keyBpm>/stems/`, `.../output/`, `.../normalized/meta.json`. No `songs-list.json`, no song-level `meta.json`. Songs discovered by crawling with `entries()` (see `entriesOf()` cast helper — TypeScript DOM lib doesn't declare this yet). Only `normalized/meta.json` is kept because LUFS target cannot be derived from directory names.
+
+`songDir` = synthesised `"${displayName}-${keyBpm}"`. Round-trips through `physicalPath()`. Tracked as `#refactor-triple` to replace with a proper pair.
+
+### Browser UI phases
+
+`App.tsx` is a phase state machine: `idle → files_selected → extracted → (normalizing | mixing) → complete`. Key affordances:
+
+- **DropZone** — initial zip picker; replaced by "Add more zips" hidden input after first files are queued. Deduplicates by filename.
+- **Past Mixes** — reconstructed from OPFS/FSA on reload. Re-mix button shown only when stems are on disk (`BrowserApi.listSongs()` filters to stem-bearing songs; `canRemix` callback gates the button in `PastMixes`).
+- **Storage type indicator** — OPFS shows amber warning with "saving to a folder instead" link; FSA shows green info bar + "Switch folder". Switching mid-session (phase ≠ idle) shows a confirmation modal.
+- **Upload/Download config buttons** — hidden until at least one song with stems is loaded (gated on `showSoundboard`).
+- **Soundboard** — browser-style tabs per mix; bus faders + per-stem sub-faders. Active tab uses `margin-bottom: -1px` to overlap the strip border.
 
 ---
 

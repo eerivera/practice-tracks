@@ -6,6 +6,26 @@ Drop zip files in, run one command, and get back a set of mixes for each song �
 
 ---
 
+## Two Ways to Use Practice Tracks
+
+### Browser — no installation needed
+
+Go to **[eerivera.github.io/practice-tracks](https://eerivera.github.io/practice-tracks/)** in Chrome or Edge. Drop your Multitracks zip files and download the finished mixes. Everything runs entirely in your browser — your audio never leaves your machine.
+
+> **Storage note:** By default your files live in browser storage, which the browser may clear when it needs space. Click **"saving to a folder instead"** when prompted to pick a permanent folder on your Mac. Your stems and mixes will then survive between sessions.
+
+### Command Line — faster, Planning Center upload coming soon
+
+The setup below installs the tool on your Mac. It uses your Mac's built-in audio tools, which are about 4× faster than the browser version for large stem sets.
+
+Once installed, you can also run:
+```
+npm run web
+```
+to open the same drag-and-drop interface at `http://localhost:3000` — useful if you prefer clicking over typing, and it will be the first place Planning Center upload appears once that feature ships.
+
+---
+
 ## Before You Start (One-Time Setup)
 
 You only need to do this once.

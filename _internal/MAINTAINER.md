@@ -16,16 +16,22 @@ npm run test:watch # unit tests, re-runs on file save
 
 ```bash
 npm run playwright:install   # downloads Chromium — run once after npm install
-npm run test:e2e             # runs against a freshly built server on port 3000
-npm run test:e2e:ui          # interactive Playwright UI for debugging
+npm run test:e2e             # server-mode tests — builds + runs against port 3000
+npm run test:e2e:browser     # browser-mode tests — VITE_BACKEND=browser static build
+npm run test:e2e:ui          # interactive Playwright UI for debugging (server mode)
 ```
 
 `test:e2e` uses `reuseExistingServer` locally — if you already have the server
 running (`npm run web` or `npm run web:dev`), Playwright will reuse it instead of
 starting a new one. In CI the server is started automatically by the test runner.
 
-E2E tests live in `_internal/tests/e2e/`. **Standing rule:** every bug fix must
-include a regression test in that directory that would have caught the bug.
+`test:e2e:browser` uses `playwright.browser.config.ts` and spins up the static
+browser build on port 5174. Each test gets an isolated browser context, so OPFS
+starts empty on every test.
+
+Server-mode E2E tests live in `_internal/tests/e2e/`. Browser-mode E2E tests live
+in `_internal/tests/e2e-browser/`. **Standing rule:** every bug fix must include a
+regression test in the appropriate directory that would have caught the bug.
 
 ---
 
@@ -244,19 +250,23 @@ _internal/
     src/
       types.ts           Web-only types: MixOutput, SongOutputs, QueueStatus (common types re-exported from @common)
       api/
-        interface.ts     ProcessingApi interface (includes listSongs, getStems)
+        interface.ts     ProcessingApi interface (includes listSongs, getStems, canRemix)
         server.ts        ServerApi — fetch + EventSource (default)
-        browser.ts       BrowserApi — full in-browser WASM pipeline (no server)
+        browser.ts       BrowserApi — full in-browser WASM pipeline (no server); owns StemStore lifecycle
         browser-backend.ts  BrowserWasmBackend — @ffmpeg/ffmpeg with Uint8Array I/O
         embedded-config.ts  Default config bundled for browser build (must mirror default_mix.yaml)
         fake-event-source.ts  Mock EventSource for browser-mode progress events
         factory.ts       Selects impl via VITE_BACKEND build flag
       components/
         DropZone.tsx      Drag-and-drop + click-to-browse .zip picker
-        ProgressFeed.tsx  SSE log + normalize progress bar
-        Soundboard.tsx    Bus + per-stem faders; buses expand to show sub-faders for multi-stem buses
+        ProgressFeed.tsx  SSE log + normalize progress bar (auto-scrolls container)
+        Soundboard.tsx    Bus + per-stem faders with browser-style tab per mix; buses expand to sub-faders
+        PastMixes.tsx     Download links for prior mixes; Re-mix button when stems are available
         OutputPanel.tsx   Download buttons for generated mix files
-      App.tsx             State machine + song selector; global config controls above mixer
+      storage/
+        stem-store.ts     Manifest-free OPFS/FSA storage — songs discovered by crawling directory tree
+      App.tsx             Phase state machine (idle → files_selected → extracted → mixing/normalizing → complete);
+                          folder switch with mid-session confirmation modal; Upload/Download config gating
     vite.config.ts
     tailwind.config.js
     postcss.config.js     Must specify explicit tailwindcss config path (PostCSS resolves from CWD, not Vite root)
@@ -295,16 +305,43 @@ The browser build (`VITE_BACKEND=browser`) runs the full pipeline in-browser. No
 
 When PCO browser support is added, credentials should be gated behind a Settings panel — do not show PCO UI on initial load. See CLAUDE.md for details.
 
+### Browser-Mode Storage (StemStore)
+
+`storage/stem-store.ts` handles all persistence for the browser build. It works with any `FileSystemDirectoryHandle` — either OPFS (default) or a real directory chosen via the File System Access API.
+
+**Directory layout under the store root:**
+```
+songs/<displayName>/<keyBpm>/
+  stems/<filename>.<ext>     raw audio extracted from zip
+  normalized/
+    meta.json                { target_lufs: number }
+    <filename>.wav           normalized audio cache
+  output/
+    <mix>.mp3                finished mix files
+```
+
+No manifest files. Songs are discovered by crawling the tree with `FileSystemDirectoryHandle.entries()` (wrapped by `entriesOf()` — TypeScript's DOM lib doesn't declare this method yet).
+
+**`songDir` identifier** — synthesised as `"${displayName}-${keyBpm}"` from directory names (e.g. `TestSong-Ab-68bpm`). Round-trips through `StemStore.physicalPath()` regex to recover the two-level path. TODO: replace with a proper `(displayName, keyBpm)` pair (`#refactor-triple`).
+
+**Storage type UI** — On load, `BrowserApi.init()` resolves to either OPFS or FSA. If OPFS, an amber warning appears ("files may be cleared by the browser") with a "saving to a folder instead" button that opens the `showDirectoryPicker` dialog. If FSA, a green info bar shows the folder name and a "Switch folder" button. Switching mid-session (when `phase !== 'idle'`) shows a confirmation modal before clearing the current session.
+
+**Re-mix button visibility** — `BrowserApi.listSongs()` filters to songs that have stems on disk. Output-only songs (no `stems/` directory) still appear in Past Mixes for downloading, but the Re-mix button is hidden via the `canRemix` callback on `PastMixes`.
+
 ---
 
 ## Running Checks
 
 ```bash
-npm run type-check   # tsc strict
-npm run lint         # eslint
-npm run test         # vitest unit tests (classifier, config, mixer)
-npm run check        # all three in sequence
+npm run type-check      # tsc strict
+npm run lint            # eslint
+npm run test            # vitest unit tests (classifier, config, mixer)
+npm run check:light     # type-check + lint + unit tests (used in deploy CI)
+npm run check           # check:light + test:e2e + test:e2e:browser (full gate)
 ```
+
+Use `check:light` when you only want the fast feedback loop (no browser). Use
+`check` as the pre-commit / pre-push gate — it's what CI runs on PRs.
 
 ## Resetting for Testing
 
