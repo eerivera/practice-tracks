@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import yaml from 'js-yaml';
 import { createApi } from './api/factory.js';
 import { DropZone } from './components/DropZone.js';
@@ -88,6 +88,14 @@ export function App() {
   }, [selectedSongDir, cacheRefetchTick]);
 
   const currentStems: StemFile[] = (selectedSongDir ? stemsBySong[selectedSongDir] : null) ?? [];
+
+  // Only songs with stems on disk can be re-mixed.  listSongs() already filters
+  // to stem-bearing songs; this callback replicates the same endsWith matching
+  // used in handleRemix to handle the server-mode "songs/<name>" path prefix.
+  const canRemix = useCallback(
+    (songDir: string) => availableSongs.some((d) => d === songDir || d.endsWith(`/${songDir}`)),
+    [availableSongs],
+  );
 
   // ── Config editing ────────────────────────────────────────────────────────────
 
@@ -724,6 +732,7 @@ export function App() {
             getDownloadUrl={(p) => api.getDownloadUrl(p)}
             getVariantZipUrl={(p) => api.getVariantZipUrl(p)}
             onRemix={(name) => { void handleRemix(name); }}
+            canRemix={canRemix}
           />
         </div>
       </div>

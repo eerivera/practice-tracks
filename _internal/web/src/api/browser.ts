@@ -521,12 +521,18 @@ export class BrowserApi implements ProcessingApi {
 
   async listSongs(): Promise<string[]> {
     await this.initPromise;
-    // Songs from the current in-memory sessions + songs loaded from storage.
+    // Songs from the current in-memory sessions always have stems in memory.
     const fromSessions = new Set<string>();
     for (const session of this.sessions.values()) {
       for (const s of session.songs) fromSessions.add(s.songDir);
     }
-    const all = new Set([...this.loadedSongs.keys(), ...fromSessions]);
+    // Only include storage-loaded songs that have stems — output-only songs cannot
+    // be re-mixed (there are no stems to process), so they must not appear in the
+    // available-songs list or the Re-mix affordance.
+    const withStems = [...this.loadedSongs.entries()]
+      .filter(([, s]) => s.stems.length > 0)
+      .map(([k]) => k);
+    const all = new Set([...withStems, ...fromSessions]);
     return [...all];
   }
 
