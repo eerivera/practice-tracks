@@ -327,10 +327,11 @@ function MixTab({ name, selected, onSelect, onRename, onRemove, removable }: Mix
     );
   }
 
-  // Inactive tab.
+  // Inactive tab — border on top/left/right makes the tab shape legible against
+  // the page background; border-b-0 lets the strip's bottom border show through.
   return (
     <div
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 cursor-pointer transition-colors"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg border border-slate-700/60 border-b-0 bg-slate-800/30 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 cursor-pointer transition-colors"
       onClick={onSelect}
       onDoubleClick={() => { setVal(name); setRenaming(true); }}
       title="Double-click to rename"
