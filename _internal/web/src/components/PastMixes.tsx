@@ -5,6 +5,8 @@ interface Props {
   getDownloadUrl: (path: string) => string;
   getVariantZipUrl: (variantPath: string) => string;
   onRemix?: (songDir: string) => void;
+  /** When provided, called per song to decide whether to show the Re-mix button. */
+  canRemix?: (songDir: string) => boolean;
 }
 
 function songDisplayName(songDir: string): string {
@@ -12,7 +14,7 @@ function songDisplayName(songDir: string): string {
   return songDir.replace(/[-_][A-G][#b]?[-_][\d.]+bpm$/i, '');
 }
 
-export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl, onRemix }: Props) {
+export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl, onRemix, canRemix }: Props) {
   if (outputs.length === 0) return null;
 
   return (
@@ -23,7 +25,7 @@ export function PastMixes({ outputs, getDownloadUrl, getVariantZipUrl, onRemix }
           <div key={song.songDir} className="bg-slate-800 rounded-xl p-4 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-medium text-white">{songDisplayName(song.songDir)}</h3>
-              {onRemix && (
+              {onRemix && (canRemix === undefined || canRemix(song.songDir)) && (
                 <button
                   onClick={() => { onRemix(song.songDir); }}
                   className="px-2.5 py-1 rounded-md text-xs bg-indigo-700 hover:bg-indigo-600 text-white transition-colors"

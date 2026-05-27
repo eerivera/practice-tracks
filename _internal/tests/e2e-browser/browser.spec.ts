@@ -15,6 +15,17 @@ const SONG = {
   outputFilenames: ['TestSong - Full Mix.mp3', 'TestSong - No Click.mp3'],
 } as const;
 
+// SONG_WITH_STEMS is used wherever stems must be present (Re-mix button, Upload/Download
+// config visibility).  SONG alone seeds only output files — useful for testing Past Mixes
+// display without mixing concerns.
+const SONG_WITH_STEMS = {
+  ...SONG,
+  stems: [
+    { filename: 'Drums', ext: 'wav' },
+    { filename: 'Bass', ext: 'wav' },
+  ],
+} as const;
+
 // ── Storage notice ────────────────────────────────────────────────────────────
 // When no FSA folder has been chosen the app defaults to OPFS and should
 // display an amber warning telling the user their files may be cleared.
@@ -68,15 +79,28 @@ test('"Download all" zip link exists after reload', async ({ page }) => {
 });
 
 // ── Re-mix button ─────────────────────────────────────────────────────────────
-// Songs with seeded outputs should show a Re-mix button in Past Mixes.
+// Re-mix requires stems to re-run the pipeline.  Songs that only have output
+// files on disk (no stems/ directory) must NOT show the button — there's nothing
+// to mix.  Songs that have stems must show it.
 
-test('Re-mix button visible for songs loaded from OPFS', async ({ page }) => {
+test('Re-mix button visible for songs loaded from OPFS with stems', async ({ page }) => {
   await page.goto('/');
-  await seedOpfsOutputs(page, SONG);
+  await seedOpfsOutputs(page, SONG_WITH_STEMS);
   await page.reload();
 
-  await expect(page.getByRole('heading', { name: SONG.displayName })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('heading', { name: SONG_WITH_STEMS.displayName })).toBeVisible({ timeout: 5000 });
   await expect(page.getByRole('button', { name: 'Re-mix' })).toBeVisible();
+});
+
+test('Re-mix button hidden for output-only songs (no stems on disk)', async ({ page }) => {
+  await page.goto('/');
+  await seedOpfsOutputs(page, SONG); // SONG has no stems
+  await page.reload();
+
+  // Song must still appear in Past Mixes (download links work).
+  await expect(page.getByRole('heading', { name: SONG.displayName })).toBeVisible({ timeout: 5000 });
+  // But Re-mix must be absent — there are no stems to process.
+  await expect(page.getByRole('button', { name: 'Re-mix' })).not.toBeVisible();
 });
 
 // ── Multiple songs ────────────────────────────────────────────────────────────
@@ -154,14 +178,6 @@ test('switching folders clears Past Mixes from the previous folder', async ({ pa
 // Upload config and Download config are only meaningful once a song is loaded
 // (there's a Soundboard to preview the effect).  Before stems are available
 // the buttons must be hidden to reduce clutter.
-
-const SONG_WITH_STEMS = {
-  ...SONG,
-  stems: [
-    { filename: 'Drums.wav', ext: 'wav' },
-    { filename: 'Bass.wav', ext: 'wav' },
-  ],
-} as const;
 
 test('Upload/Download config hidden before stems loaded, visible after', async ({ page }) => {
   await page.goto('/');
