@@ -303,6 +303,23 @@ export function App() {
     handleNormalize(true);
   }
 
+  // ── Storage folder switching ──────────────────────────────────────────────────
+
+  async function handleSwitchFolder(): Promise<void> {
+    if (!api.switchToFsa) return;
+    try {
+      const info = await api.switchToFsa();
+      setStorageInfo(info);
+      // Reload both lists from the new store — no page reload needed.
+      const [outputs, songs] = await Promise.all([api.getOutputs(), api.listSongs()]);
+      setPastOutputs(outputs);
+      setAvailableSongs(songs);
+      setSelectedSongDir(songs.length > 0 ? songs[songs.length - 1] : null);
+    } catch {
+      // User cancelled the picker — stay on current storage.
+    }
+  }
+
   function handleReset() {
     esRef.current?.close();
     esRef.current = null;
@@ -376,11 +393,7 @@ export function App() {
                   We recommend{' '}
                   {api.switchToFsa && 'showDirectoryPicker' in window ? (
                     <button
-                      onClick={() => {
-                        void api.switchToFsa?.()
-                          .then((info) => { setStorageInfo(info); })
-                          .catch(() => { /* user cancelled the picker — stay on OPFS */ });
-                      }}
+                      onClick={() => { void handleSwitchFolder(); }}
                       className="underline font-medium text-amber-100 hover:text-white transition-colors"
                     >
                       saving to a folder instead
@@ -398,6 +411,14 @@ export function App() {
                   Stems, normalized audio, and mixes saved to:{' '}
                   <span className="text-slate-200 font-medium">{storageInfo.label}</span>
                 </span>
+                {api.switchToFsa && 'showDirectoryPicker' in window && (
+                  <button
+                    onClick={() => { void handleSwitchFolder(); }}
+                    className="ml-auto shrink-0 underline text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    Switch folder
+                  </button>
+                )}
               </div>
             )
           )}
