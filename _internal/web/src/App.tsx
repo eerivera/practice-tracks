@@ -442,7 +442,20 @@ export function App() {
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold text-white">Practice Tracks</h1>
+          <div className="flex items-baseline justify-between gap-4">
+            <h1 className="text-2xl font-semibold text-white">Practice Tracks</h1>
+            {/* Repo link — shown in browser/static build only; server users already know where they are */}
+            {api.switchToFsa && (
+              <a
+                href="https://github.com/eerivera/practice-tracks"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+              >
+                GitHub ↗
+              </a>
+            )}
+          </div>
           <p className="text-slate-400 text-sm">Drop your Multitracks zips to generate rehearsal mixes</p>
           {/* Storage notice — browser mode only.  Shows where stems are persisted. */}
           {storageInfo && (
