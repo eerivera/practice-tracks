@@ -453,16 +453,22 @@ export function Soundboard({ config, stems, onChange }: Props) {
   return (
     <div>
       {/* Mix tabs strip.
-          Outer wrapper: border-b + items-end alignment; no overflow set here so the
-          "+ Add mix" button is always visible and never scrolls away.
-          Inner scrollable: overflow-x-auto + [overflow-y:clip] (CSS spec only converts
-          'visible→auto', not 'clip', so y stays clipped while x scrolls).
-          pb-[2px] -mb-[2px]: gives the active tab's -mb-px 2 px of headroom inside the
-          clip boundary so it renders above the border without any gap.
-          Each tab is shrink-0 to prevent compression; flex-1 min-w-0 lets the inner
-          div shrink and scroll rather than pushing the button off-screen. */}
+          Outer wrapper: border-b + items-end; no overflow here so "+ Add mix" is
+          always pinned at the right edge regardless of tab count.
+          Inner scrollable: overflow-x-auto + [overflow-y:clip] (CSS spec only
+          converts 'visible→auto', not 'clip', so y stays clipped while x scrolls).
+          [scrollbar-gutter:stable]: always reserves the 6 px scrollbar lane so the
+          outer div height is constant whether or not tabs overflow — required for
+          the -mb calculation to hold.  Without it, -mb-[8px] would overshoot when
+          there is no overflow and no scrollbar lane exists.
+          pb-[2px]: headroom for the active tab's -mb-px inside the clip boundary.
+          -mb-[8px] = pb (2 px) + scrollbar lane (h-1.5 = 6 px): keeps outer height
+          at H so border-b stays flush with the active tab's bottom edge.
+          ::-webkit-scrollbar styles: switch Chromium from overlay (hover-only,
+          overlaps content) to classic (always visible when overflowing, sits in its
+          own lane below the tab labels). */}
       <div className="flex items-end gap-0.5 border-b border-slate-700">
-        <div className="flex items-end gap-0.5 overflow-x-auto [overflow-y:clip] pb-[2px] -mb-[2px] flex-1 min-w-0">
+        <div className="flex items-end gap-0.5 overflow-x-auto [overflow-y:clip] pb-[2px] -mb-[8px] flex-1 min-w-0 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600">
           {config.mixes.map((m, i) => (
             <MixTab
               key={i}
