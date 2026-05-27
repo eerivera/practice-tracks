@@ -3,7 +3,7 @@ import path from 'path';
 import { createBackend } from './backend/factory.js';
 import { loadConfig } from './config/loader.js';
 import { findStemBus, buildMixInputs } from '../common/mixer.js';
-import { formatSongDisplayName, physicalSongPath, parseSongMetadata } from './extractor.js';
+import { formatOutputSubdir, formatSongDisplayName, physicalSongPath, parseSongMetadata } from './extractor.js';
 import { consoleEmitter, type Emitter } from '../common/events.js';
 import { type StemFile, type AudioBackend, type Config } from '../common/types.js';
 import { normalizeKey, semitonesBetween, ALL_KEYS, type KeyName } from '../common/keys.js';
@@ -94,6 +94,50 @@ export interface NormalizeResult {
   pipelineStartMs: number;
 }
 
+function sourceKeyForSongDir(songDir: string): KeyName {
+  const meta = parseSongMetadata(path.basename(songDir));
+  const sourceKeyRaw = meta.key;
+  if (!sourceKeyRaw) {
+    throw new Error(
+      `Cannot determine source key from song directory "${path.basename(songDir)}". ` +
+      'Key must be part of the directory name (e.g. "SongName-Ab-68.00bpm").'
+    );
+  }
+  const sourceKey = normalizeKey(sourceKeyRaw);
+  if (!sourceKey) {
+    throw new Error(`Unrecognised source key "${sourceKeyRaw}" in directory "${path.basename(songDir)}".`);
+  }
+  return sourceKey;
+}
+
+function resolveTargetKey(options: PipelineOptions): KeyName | undefined {
+  if (options.targetKey !== undefined && options.semitones !== undefined) {
+    throw new Error('--to-key and --semitones cannot be used together. Use one or the other.');
+  }
+
+  if (options.targetKey !== undefined) {
+    const resolved = normalizeKey(options.targetKey);
+    if (!resolved) {
+      throw new Error(`Unrecognised target key "${options.targetKey}". Use a key name like C, C#, Db, D, Eb, E, F, F#, Gb, G, Ab, A, Bb, B.`);
+    }
+    return resolved;
+  }
+
+  if (options.semitones === undefined) return undefined;
+
+  const sourceKey = sourceKeyForSongDir(options.songDir);
+  const idx = ALL_KEYS.indexOf(sourceKey);
+  const keyIdx = ((idx + options.semitones) % 12 + 12) % 12;
+  return ALL_KEYS[keyIdx];
+}
+
+function transposedOutputDir(songDir: string, targetKey: KeyName): string {
+  const meta = parseSongMetadata(path.basename(songDir));
+  const keyBpm = formatOutputSubdir({ ...meta, key: targetKey });
+  const targetDirName = keyBpm ?? `${targetKey}-unknownbpm`;
+  return path.join(path.dirname(physicalSongPath(songDir)), targetDirName, 'output');
+}
+
 // ── Step 1.5: transpose ───────────────────────────────────────────────────────
 // Pitch-shifts all normalised stems to the target key.
 // Returns a modified NormalizeResult pointing to the transposed stems and the
@@ -108,31 +152,13 @@ export async function runTranspose(
 
   // Determine the source key from the songDir name.
   const meta = parseSongMetadata(path.basename(songDir));
-  const sourceKeyRaw = meta.key;
-  if (!sourceKeyRaw) {
-    throw new Error(
-      `Cannot determine source key from song directory "${path.basename(songDir)}". ` +
-      'Key must be part of the directory name (e.g. "SongName-Ab-68.00bpm").'
-    );
-  }
-  const sourceKey = normalizeKey(sourceKeyRaw);
-  if (!sourceKey) {
-    throw new Error(`Unrecognised source key "${sourceKeyRaw}" in directory "${path.basename(songDir)}".`);
-  }
-
+  const sourceKey = sourceKeyForSongDir(songDir);
   const semitones = semitonesBetween(sourceKey, targetKey);
 
   // If no transposition needed, return result unchanged.
   if (semitones === 0) return result;
 
-  // Determine the method used so the event is informative.
-  // Probe rubberband on native backends; WASM always uses asetrate for now.
-  let method: 'rubberband' | 'asetrate' = 'asetrate';
-  if ('probeRubberband' in backend) {
-    // NativeFFmpegBackend exposes the probe; check it.
-    const native = backend as typeof backend & { probeRubberband(): Promise<boolean> };
-    method = (await native.probeRubberband()) ? 'rubberband' : 'asetrate';
-  }
+  const method = await backend.transposeMethod();
 
   emit({
     type: 'transpose_start',
@@ -144,8 +170,7 @@ export async function runTranspose(
 
   // Transposed stems go into a sibling directory named after the target key+bpm.
   const physDir = physicalSongPath(songDir);
-  const bpmSuffix = meta.bpmRaw ? `${meta.bpmRaw}bpm` : 'unknownbpm';
-  const targetDirName = `${targetKey}-${bpmSuffix}`;
+  const targetDirName = formatOutputSubdir({ ...meta, key: targetKey }) ?? `${targetKey}-unknownbpm`;
   const transposeDir = path.join(path.dirname(physDir), targetDirName, 'transposed');
   fs.mkdirSync(transposeDir, { recursive: true });
 
@@ -424,7 +449,14 @@ export async function runPipeline(
   options: PipelineOptions,
   emit: Emitter = consoleEmitter
 ): Promise<PipelineResult> {
-  const normalizeResult = await runNormalize(options.songDir, options.force ?? false, emit);
+  const targetKey = resolveTargetKey(options);
+  const sourceKey = targetKey ? sourceKeyForSongDir(options.songDir) : undefined;
+  const isTransposingToDifferentKey = targetKey !== undefined && targetKey !== sourceKey;
+
+  // If original-key output already exists, we still need to normalize/cache stems
+  // for a different target key. The target output gets its own skip check below.
+  const forceNormalize = (options.force ?? false) || isTransposingToDifferentKey;
+  const normalizeResult = await runNormalize(options.songDir, forceNormalize, emit);
   if (!normalizeResult) {
     const outputDir = options.outputDir ?? path.join(options.songDir, 'output');
     return { skipped: true, outputDir, mixFiles: [] };
@@ -432,32 +464,17 @@ export async function runPipeline(
 
   // Transpose step: pitch-shift all stems to the target key before mixing.
   let mixResult = normalizeResult;
-  if (options.targetKey !== undefined || options.semitones !== undefined) {
-    let targetKey: KeyName;
-    if (options.targetKey !== undefined) {
-      const resolved = normalizeKey(options.targetKey);
-      if (!resolved) {
-        throw new Error(`Unrecognised target key "${options.targetKey}". Use a key name like C, C#, Db, D, Eb, E, F, F#, Gb, G, Ab, A, Bb, B.`);
-      }
-      targetKey = resolved;
-    } else {
-      // semitones mode: derive target key from source key + offset
-      const meta = parseSongMetadata(path.basename(options.songDir));
-      const sourceKey = meta.key ? normalizeKey(meta.key) : undefined;
-      if (!sourceKey) {
-        throw new Error(
-          `--semitones requires the song directory to encode a key (e.g. "SongName-Ab-68.00bpm"). ` +
-          `Use --to-key instead to name the target key explicitly.`
-        );
-      }
-      // options.semitones is defined here (we're in the else branch and the
-      // outer guard checked `options.semitones !== undefined`).  TypeScript
-      // doesn't narrow it through the OR condition, so we extract it first.
-      const semitones = options.semitones ?? 0;
-      const idx = ALL_KEYS.indexOf(sourceKey);
-      // keyIdx is always 0–11 so the array access is always defined.
-      const keyIdx = ((idx + semitones) % 12 + 12) % 12;
-      targetKey = ALL_KEYS[keyIdx];
+  if (targetKey !== undefined) {
+    const targetOutputDir = transposedOutputDir(options.songDir, targetKey);
+    const songTitle = formatSongDisplayName(path.basename(options.songDir));
+    const mixNames = normalizeResult.config.mixes.map((m) => m.name);
+    if (!(options.force ?? false) && isTransposingToDifferentKey && outputAlreadyExists(targetOutputDir, songTitle, mixNames, normalizeResult.config.output_format)) {
+      emit({
+        type: 'skip',
+        songName: path.basename(options.songDir),
+        reason: `output already exists at ${path.relative(process.cwd(), targetOutputDir)}`,
+      });
+      return { skipped: true, outputDir: targetOutputDir, mixFiles: [] };
     }
     mixResult = await runTranspose(normalizeResult, targetKey, emit);
   }

@@ -86,6 +86,10 @@ export class WasmFFmpegBackend implements AudioBackend {
     return true;
   }
 
+  transposeMethod(): Promise<'asetrate'> {
+    return Promise.resolve('asetrate');
+  }
+
   /**
    * Transpose using asetrate+atempo (rubberband not available in standard
    * @ffmpeg/core builds).  PR 2 will probe for rubberband in the loaded WASM

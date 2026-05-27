@@ -73,6 +73,16 @@ AG, Bass, BGVS, Choir, Click Track, Drums (Live), EG 1/2/3, FX, Guide, Keys 1-5,
 
 ---
 
+## Transposition Status
+
+Native/local transposition supports `--to-key <key>` and `--semitones <n>`. The pipeline normalizes/cache-loads stems first, transposes into sibling key/BPM folders, then mixes from the transposed stems. Target-key output uses the same normalized key/BPM directory style as extraction (`D-100bpm`, not `D-100.00bpm`).
+
+`AudioBackend.transposeMethod()` reports the progress label (`rubberband` or `asetrate`) without pipeline importing backend internals. Native FFmpeg uses the `rubberband` filter when the installed FFmpeg has `--enable-librubberband`; otherwise it falls back to `aresample+asetrate+atempo`. WASM currently uses `asetrate+atempo`; PR 2 should upgrade browser/WASM quality via standalone `rubberband-wasm`.
+
+Regression coverage: `transposition-pipeline.test.ts` ensures original-key output does not skip a different target-key mix, and target-key existing output still skips when not forced.
+
+---
+
 ## Browser Frontend Notes
 
 - PCO features: hidden until user pastes PAT in a Settings panel and it validates. Do NOT render PCO UI on initial load.

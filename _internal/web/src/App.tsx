@@ -278,7 +278,9 @@ export function App() {
         }
       }
     );
-    api.normalizeSongs(dirs, sessionIdRef.current, force, config).catch((err: unknown) => {
+    // A target-key mix writes to a different output folder, so do not let the
+    // original-key output skip block normalization before the mix step.
+    api.normalizeSongs(dirs, sessionIdRef.current, force || targetKey !== '', config).catch((err: unknown) => {
       setEvents((prev) => [...prev, { type: 'error', message: err instanceof Error ? err.message : String(err) }]);
     });
   }

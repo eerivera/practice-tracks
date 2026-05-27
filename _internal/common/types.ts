@@ -58,6 +58,8 @@ export interface TransposeOptions {
   semitones: number;
 }
 
+export type TransposeMethod = 'rubberband' | 'asetrate';
+
 export interface AudioBackend {
   // Maximum number of normalize() calls that can safely run in parallel.
   // Native backend returns os.cpus().length; WASM returns 1 (shared VFS).
@@ -70,6 +72,8 @@ export interface AudioBackend {
    * WASM: always uses asetrate+atempo (no rubberband in standard @ffmpeg/core build).
    */
   transpose(inputPath: string, outputPath: string, options: TransposeOptions): Promise<void>;
+  /** Human-readable transposition implementation used for progress events. */
+  transposeMethod(): Promise<TransposeMethod>;
   /** True when the backend supports transposition (always true for both backends). */
   supportsTranspose(): boolean;
 }

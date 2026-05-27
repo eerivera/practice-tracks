@@ -1,7 +1,13 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
-import { type MixInput, type AudioBackend, type NormalizeOptions, type TransposeOptions } from '../../common/types.js';
+import {
+  type MixInput,
+  type AudioBackend,
+  type NormalizeOptions,
+  type TransposeMethod,
+  type TransposeOptions,
+} from '../../common/types.js';
 import { buildTransposeFilter } from '../../common/keys.js';
 
 const execFileAsync = promisify(execFile);
@@ -35,6 +41,10 @@ export class NativeFFmpegBackend implements AudioBackend {
     return this.rubberbandSupported;
   }
 
+  async transposeMethod(): Promise<TransposeMethod> {
+    return (await this.probeRubberband()) ? 'rubberband' : 'asetrate';
+  }
+
   get maxConcurrency(): number {
     // Cap at 8 — above that, disk I/O becomes the bottleneck before CPU does.
     return Math.min(os.cpus().length, 8);
@@ -60,7 +70,7 @@ export class NativeFFmpegBackend implements AudioBackend {
   }
 
   async transpose(inputPath: string, outputPath: string, options: TransposeOptions): Promise<void> {
-    const useRubberband = await this.probeRubberband();
+    const useRubberband = (await this.transposeMethod()) === 'rubberband';
     const filter = buildTransposeFilter(options.semitones, useRubberband);
     await execFileAsync(this.ffmpegPath, [
       '-i', inputPath,
