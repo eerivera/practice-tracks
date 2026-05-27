@@ -158,15 +158,20 @@ export function App() {
   // ── Step handlers ────────────────────────────────────────────────────────────
 
   function handleFilesDropped(files: File[]) {
-    filesRef.current = files;
-    setFileCount(files.length);
+    // Deduplicate by filename in case the user drops the same file twice.
+    const unique = files.filter((f, i) => files.findIndex((g) => g.name === f.name) === i);
+    filesRef.current = unique;
+    setFileCount(unique.length);
     setPhase('files_selected');
   }
 
   function handleAddMoreFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const newFiles = Array.from(e.target.files ?? []).filter((f) => f.name.toLowerCase().endsWith('.zip'));
+    const existing = filesRef.current ?? [];
+    const existingNames = new Set(existing.map((f) => f.name));
+    const newFiles = Array.from(e.target.files ?? [])
+      .filter((f) => f.name.toLowerCase().endsWith('.zip') && !existingNames.has(f.name));
     if (newFiles.length === 0) return;
-    filesRef.current = [...(filesRef.current ?? []), ...newFiles];
+    filesRef.current = [...existing, ...newFiles];
     setFileCount(filesRef.current.length);
     e.target.value = '';
   }

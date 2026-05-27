@@ -215,3 +215,28 @@ test('"Add more zips" appends files and updates the count', async ({ page }) => 
   });
   await expect(page.getByText('2 zips ready')).toBeVisible({ timeout: 3000 });
 });
+
+test('"Add more zips" silently skips duplicate filenames', async ({ page }) => {
+  await page.goto('/');
+
+  const fakeZipBytes = Buffer.from([
+    0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+
+  // Queue track1.zip via the DropZone.
+  await page.locator('input[type="file"][accept=".zip"]').setInputFiles({
+    name: 'track1.zip',
+    mimeType: 'application/zip',
+    buffer: fakeZipBytes,
+  });
+  await expect(page.getByText('1 zip ready')).toBeVisible({ timeout: 3000 });
+
+  // Attempt to add track1.zip again via the add-more input — must be rejected.
+  await page.locator('input[type="file"][accept=".zip"]').setInputFiles({
+    name: 'track1.zip',
+    mimeType: 'application/zip',
+    buffer: fakeZipBytes,
+  });
+  await expect(page.getByText('1 zip ready')).toBeVisible({ timeout: 3000 });
+});
