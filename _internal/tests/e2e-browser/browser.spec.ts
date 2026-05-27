@@ -240,3 +240,88 @@ test('"Add more zips" silently skips duplicate filenames', async ({ page }) => {
   });
   await expect(page.getByText('1 zip ready')).toBeVisible({ timeout: 3000 });
 });
+
+// ── Folder switch confirmation ─────────────────────────────────────────────────
+// Switching storage while a session is active must show a confirmation modal
+// so the user doesn't lose work accidentally.  Idle → no modal, just switches.
+
+const fakeZipBytes = Buffer.from([
+  0x50, 0x4B, 0x05, 0x06, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+]);
+
+test('switching folder from idle phase needs no confirmation', async ({ page }) => {
+  await page.goto('/');
+  await mockFsaFolderWithSong(page, FSA_SONG);
+
+  // From idle (home screen), clicking the OPFS link should switch immediately.
+  await expect(
+    page.getByRole('button', { name: 'saving to a folder instead' })
+  ).toBeVisible({ timeout: 5000 });
+  await page.getByRole('button', { name: 'saving to a folder instead' }).click();
+
+  // No confirmation modal — should go straight to FSA state.
+  await expect(page.getByRole('button', { name: 'Switch folder' })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('heading', { name: 'Switch storage folder?' })).not.toBeVisible();
+});
+
+test('switching folder mid-session shows confirmation modal', async ({ page }) => {
+  await page.goto('/');
+
+  // Reach files_selected phase.
+  await page.locator('input[type="file"][accept=".zip"]').setInputFiles({
+    name: 'track.zip',
+    mimeType: 'application/zip',
+    buffer: fakeZipBytes,
+  });
+  await expect(page.getByText('1 zip ready')).toBeVisible({ timeout: 3000 });
+
+  // Clicking switch should now show the confirmation modal.
+  await page.getByRole('button', { name: 'saving to a folder instead' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Switch storage folder?' })
+  ).toBeVisible({ timeout: 3000 });
+});
+
+test('cancelling the confirmation keeps the session intact', async ({ page }) => {
+  await page.goto('/');
+
+  await page.locator('input[type="file"][accept=".zip"]').setInputFiles({
+    name: 'track.zip',
+    mimeType: 'application/zip',
+    buffer: fakeZipBytes,
+  });
+  await expect(page.getByText('1 zip ready')).toBeVisible({ timeout: 3000 });
+
+  await page.getByRole('button', { name: 'saving to a folder instead' }).click();
+  await expect(page.getByRole('heading', { name: 'Switch storage folder?' })).toBeVisible({ timeout: 3000 });
+
+  // Cancel — modal closes, session is unchanged.
+  // Scope to the fixed overlay so we don't hit the files_selected "Cancel" button too.
+  await page.locator('.fixed.inset-0').getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('heading', { name: 'Switch storage folder?' })).not.toBeVisible();
+  await expect(page.getByText('1 zip ready')).toBeVisible();
+});
+
+test('confirming the switch resets to the home screen', async ({ page }) => {
+  await page.goto('/');
+
+  await page.locator('input[type="file"][accept=".zip"]').setInputFiles({
+    name: 'track.zip',
+    mimeType: 'application/zip',
+    buffer: fakeZipBytes,
+  });
+  await expect(page.getByText('1 zip ready')).toBeVisible({ timeout: 3000 });
+
+  // Set up the mock FSA folder before confirming (showDirectoryPicker will be called).
+  await mockFsaFolderWithSong(page, FSA_SONG);
+  await page.getByRole('button', { name: 'saving to a folder instead' }).click();
+  await expect(page.getByRole('heading', { name: 'Switch storage folder?' })).toBeVisible({ timeout: 3000 });
+
+  // Confirm — the modal's "Switch folder" button (not the header one).
+  await page.getByRole('button', { name: 'Switch folder' }).click();
+
+  // Should return to home screen (DropZone visible) and show the new folder's songs.
+  await expect(page.getByText('Drop Multitracks zips here')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('heading', { name: FSA_SONG.displayName })).toBeVisible();
+});
