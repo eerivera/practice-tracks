@@ -154,11 +154,42 @@ export class BrowserApi implements ProcessingApi {
     });
   }
 
-  /** Switch to a user-picked FSA folder (call from a click handler). */
+  /** Switch to a user-picked FSA folder (call from a click handler).
+   *
+   * Revokes blob URLs from the previous store, clears all state derived from
+   * it, then loads songs and outputs from the new one — so Past Mixes and the
+   * song list immediately reflect the new location without a page reload.
+   */
   async switchToFsa(): Promise<StorageInfo> {
     const result = await createFsaStore();
+
+    // Revoke old blob URLs to free memory.
+    for (const url of this.persistedFileBlobUrls.values()) URL.revokeObjectURL(url);
+    for (const url of this.persistedVariantZipUrls.values()) URL.revokeObjectURL(url);
+
+    // Clear all state derived from the previous store.
+    this.persistedOutputs.length = 0;
+    this.persistedFileBlobUrls.clear();
+    this.persistedVariantZipUrls.clear();
+    this.loadedSongs.clear();
+
+    // Activate the new store.
     this.stemStore = result.store;
     this.storageInfo = result.info;
+
+    // Populate loadedSongs and persistedOutputs from the new store
+    // (mirrors what init() does after initial setup).
+    const stored = await this.stemStore.listSongs();
+    for (const s of stored) {
+      this.loadedSongs.set(s.songDir, {
+        songDir: s.songDir,
+        displayName: s.displayName,
+        keyBpm: s.keyBpm,
+        stems: s.stems.map((st) => ({ filename: st.filename, ext: st.ext })),
+      });
+      await this.reloadOutputs(s);
+    }
+
     return result.info;
   }
 

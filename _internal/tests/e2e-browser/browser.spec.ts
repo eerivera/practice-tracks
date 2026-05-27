@@ -6,7 +6,7 @@
  * context, so OPFS starts empty every time.
  */
 import { test, expect } from '@playwright/test';
-import { seedOpfsOutputs } from './helpers.js';
+import { seedOpfsOutputs, mockFsaFolderWithSong } from './helpers.js';
 
 const SONG = {
   zipName: 'TestSong-Ab-68.00bpm',
@@ -94,4 +94,58 @@ test('Past Mixes shows all seeded songs after reload', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: SONG.displayName })).toBeVisible({ timeout: 5000 });
   await expect(page.getByRole('heading', { name: 'AnotherSong' })).toBeVisible();
+});
+
+// ── Switch folder ─────────────────────────────────────────────────────────────
+// The FSA info bar (shown when a folder is active) must have a "Switch folder"
+// button.  Switching should reload Past Mixes from the new location without a
+// page reload and must not show songs from the previous location.
+
+const FSA_SONG = {
+  zipName: 'FsaSong-D-90.00bpm',
+  displayName: 'FsaSong',
+  keyBpm: 'D-90bpm',
+  outputFilenames: ['FsaSong - Full Mix.mp3'],
+} as const;
+
+test('"Switch folder" button appears after switching from OPFS to FSA', async ({ page }) => {
+  await page.goto('/');
+  await mockFsaFolderWithSong(page, FSA_SONG);
+
+  // OPFS amber warning includes "saving to a folder instead" link.
+  await expect(page.getByRole('button', { name: 'saving to a folder instead' })).toBeVisible({ timeout: 5000 });
+  await page.getByRole('button', { name: 'saving to a folder instead' }).click();
+
+  // After switching, the FSA info bar must show "Switch folder".
+  await expect(page.getByRole('button', { name: 'Switch folder' })).toBeVisible({ timeout: 5000 });
+});
+
+test('switching to a folder loads its songs into Past Mixes', async ({ page }) => {
+  await page.goto('/');
+  await mockFsaFolderWithSong(page, FSA_SONG);
+
+  await page.getByRole('button', { name: 'saving to a folder instead' }).click();
+
+  // Past Mixes must show the song seeded into the mock FSA folder — no reload needed.
+  await expect(page.getByRole('heading', { name: FSA_SONG.displayName })).toBeVisible({ timeout: 5000 });
+  const link = page.getByRole('link', { name: FSA_SONG.outputFilenames[0] });
+  await expect(link).toBeVisible();
+  const href = await link.getAttribute('href');
+  expect(href).toMatch(/^blob:/);
+});
+
+test('switching folders clears Past Mixes from the previous folder', async ({ page }) => {
+  // Start with an OPFS song loaded.
+  await page.goto('/');
+  await seedOpfsOutputs(page, SONG);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: SONG.displayName })).toBeVisible({ timeout: 5000 });
+
+  // Switch to a mock FSA folder that contains a different song.
+  await mockFsaFolderWithSong(page, FSA_SONG);
+  await page.getByRole('button', { name: 'saving to a folder instead' }).click();
+
+  // New song must appear; old OPFS song must not.
+  await expect(page.getByRole('heading', { name: FSA_SONG.displayName })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('heading', { name: SONG.displayName })).not.toBeVisible();
 });
