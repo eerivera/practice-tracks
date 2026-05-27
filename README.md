@@ -74,6 +74,30 @@ npm install
 
 That's the one-time setup done.
 
+---
+
+### Optional: Higher-quality transposition
+
+When you transpose a song to a different key, Practice Tracks uses FFmpeg's built-in pitch shifting by default. It works well, but if you want the highest-quality transposition (phase-coherent, no timing drift), you can install FFmpeg with the [Rubber Band](https://breakfastquay.com/rubberband/) library compiled in. The app detects it automatically — no configuration needed.
+
+> **This step is optional.** The default pitch shifting is perfectly usable. You'd mostly notice the difference on sustained notes or piano — for most worship mix listening purposes the standard version is fine.
+
+**Mac:**
+
+You need to swap the standard FFmpeg for a version built with Rubber Band support. This takes a few minutes to compile.
+
+```
+brew uninstall ffmpeg
+brew tap homebrew-ffmpeg/ffmpeg
+brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-rubberband
+```
+
+The replacement installs to the same location, so everything else continues to work as before.
+
+**Windows / Linux:** Instructions coming soon.
+
+---
+
 > **Tip:** In Terminal, press `Tab` after typing a few characters of a path to auto-complete it. You can also use a wildcard — `songs/Who*` matches any folder starting with "Who," which saves typing for long song names.
 
 ---

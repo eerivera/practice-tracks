@@ -1,5 +1,6 @@
 import { writeFileSync } from 'fs';
-import { type MixInput, type AudioBackend, type NormalizeOptions } from '../../common/types.js';
+import { type MixInput, type AudioBackend, type NormalizeOptions, type TransposeOptions } from '../../common/types.js';
+import { buildTransposeFilter } from '../../common/keys.js';
 import type { FFmpeg } from '@ffmpeg/ffmpeg';
 
 // NOTE: This backend is intended for browser use (no FFmpeg installation required).
@@ -72,6 +73,39 @@ export class WasmFFmpegBackend implements AudioBackend {
       '-i', inName,
       '-af', `loudnorm=I=${options.targetLufs}:TP=${options.truePeak}:LRA=11:linear=true`,
       '-ar', '44100',
+      '-y', outName,
+    ]);
+
+    const data = await ffmpeg.readFile(outName) as Uint8Array;
+    writeFileSync(outputPath, data);
+    await ffmpeg.deleteFile(inName);
+    await ffmpeg.deleteFile(outName);
+  }
+
+  supportsTranspose(): boolean {
+    return true;
+  }
+
+  transposeMethod(): Promise<'asetrate'> {
+    return Promise.resolve('asetrate');
+  }
+
+  /**
+   * Transpose using asetrate+atempo (rubberband not available in standard
+   * @ffmpeg/core builds).  PR 2 will probe for rubberband in the loaded WASM
+   * instance and switch buildTransposeFilter to useRubberband=true when found.
+   */
+  async transpose(inputPath: string, outputPath: string, options: TransposeOptions): Promise<void> {
+    const { fetchFile } = await import('@ffmpeg/util');
+    const ffmpeg = await this.getFFmpeg();
+    const id = this.normalizeCallCount++;
+    const inName = `xpose_in_${id}.wav`;
+    const outName = `xpose_out_${id}.wav`;
+
+    await ffmpeg.writeFile(inName, await fetchFile(inputPath));
+    await ffmpeg.exec([
+      '-i', inName,
+      '-af', buildTransposeFilter(options.semitones, false /* PR 2: detect rubberband */),
       '-y', outName,
     ]);
 

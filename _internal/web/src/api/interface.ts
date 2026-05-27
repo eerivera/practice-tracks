@@ -8,7 +8,15 @@ export interface ProcessingApi {
   normalizeSongs(songDirs: string[], sessionId: string, force: boolean, config: Config): Promise<void>;
 
   /** Step 3: mix from the normalised stems held by a prior normalizeSongs call. */
-  mixSongs(sessionId: string, config: Config): Promise<void>;
+  mixSongs(sessionId: string, config: Config, targetKey?: string): Promise<void>;
+
+  /**
+   * True when the backend supports transposition (always true for both native
+   * and WASM backends; the quality differs — rubberband vs asetrate — but the
+   * feature is available).  Returns false only in a future browser-only build
+   * that explicitly opts out.
+   */
+  supportsTranspose?(): boolean;
 
   /** Open an SSE stream for the given session. */
   getEventStream(sessionId: string): EventSource;

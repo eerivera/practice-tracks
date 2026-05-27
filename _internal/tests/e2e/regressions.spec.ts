@@ -282,3 +282,47 @@ test('"All done" never appears in the progress feed', async ({ page }) => {
     page.getByText('── All done ──', { exact: true })
   ).not.toBeAttached();
 });
+
+// ── Transposition: key selector visible in server mode ────────────────────────
+// After extraction the "Transpose to key:" dropdown must appear in server mode
+// (ServerApi.supportsTranspose() === true).  If it is absent the user cannot
+// choose a target key and the feature is silently unavailable.
+
+test('key selector appears after extraction in server mode', async ({ page }) => {
+  await mockSseSequence(page, [
+    // Extract: one song extracted, then done.
+    [
+      { type: 'song_header', songName: 'test-song', stemsDir: '', outputDir: '' },
+      { type: 'songs_ready', songDirs: ['songs/test-song'] },
+      { type: 'session_complete' },
+    ],
+  ]);
+
+  await setupBaseMocks(page);
+  await page.route('/api/check-outputs', (r) =>
+    r.fulfill({ json: [{ songDir: 'songs/test-song', hasOutput: false }] })
+  );
+  await page.route('/api/extract', (r) =>
+    r.fulfill({ json: { status: 'extracting', count: 1 } })
+  );
+
+  await page.goto('/');
+
+  const fileInput = page.locator('input[type="file"][accept=".zip"]');
+  await fileInput.setInputFiles({
+    name: 'test-song.zip',
+    mimeType: 'application/zip',
+    buffer: Buffer.from('PK\x03\x04'),
+  });
+  await page.getByRole('button', { name: 'Extract Stems' }).click();
+
+  // After extraction the key selector should be visible.
+  await expect(page.getByText('Transpose to key:', { exact: false })).toBeVisible({ timeout: 5000 });
+  // The dropdown must include all 12 chromatic keys.
+  const select = page.locator('select').filter({ hasText: 'original key' });
+  await expect(select).toBeVisible();
+  await expect(select.locator('option[value="Bb"]')).toHaveCount(0); // Bb not in ALL_KEYS (A# is)
+  await expect(select.locator('option[value="A#"]')).toHaveCount(1);
+  await expect(select.locator('option[value="C"]')).toHaveCount(1);
+  await expect(select.locator('option[value="B"]')).toHaveCount(1);
+});

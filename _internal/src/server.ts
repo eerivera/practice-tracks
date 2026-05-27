@@ -5,7 +5,8 @@ import fs from 'fs';
 import os from 'os';
 import open from 'open';
 import { zipSync } from 'fflate';
-import { runNormalize, runMix, hasExistingOutput, listStemFiles, getNormalizeCacheMeta, type NormalizeResult } from './pipeline.js';
+import { runNormalize, runMix, runTranspose, hasExistingOutput, listStemFiles, getNormalizeCacheMeta, type NormalizeResult } from './pipeline.js';
+import { normalizeKey } from '../common/keys.js';
 import type { Config } from '../common/types.js';
 import { extractMultitrackZip, parseSongMetadata, formatOutputSubdir, formatSongDisplayName, physicalSongPath } from './extractor.js';
 import { loadBaseConfig, saveBaseConfig, resetBaseConfig } from './config/loader.js';
@@ -177,13 +178,23 @@ app.post('/api/normalize', async (req: Request, res: Response) => {
 });
 
 // Step 3: mix from the normalised stems held by a previous /api/normalize call.
+// Optional targetKey causes a transpose step before mixing.
 // Cleans up tmpDirs on completion or error.
 app.post('/api/mix', async (req: Request, res: Response) => {
-  const { sessionId } = req.body as { sessionId: string };
+  const { sessionId, targetKey } = req.body as { sessionId: string; targetKey?: string };
 
   if (!sessionId) {
     res.status(400).json({ error: 'sessionId is required' });
     return;
+  }
+
+  // Validate targetKey if provided
+  if (targetKey !== undefined) {
+    const resolved = normalizeKey(targetKey);
+    if (!resolved) {
+      res.status(400).json({ error: `Unrecognised target key "${targetKey}". Use a key name like C, C#, Db, D, …` });
+      return;
+    }
   }
 
   const results = normalizedResults.get(sessionId);
@@ -199,7 +210,13 @@ app.post('/api/mix', async (req: Request, res: Response) => {
   try {
     for (const result of results) {
       try {
-        await runMix(result, emit);
+        // Transpose before mixing when a target key is requested.
+        // normalizeKey(targetKey) was validated above, so the cast is safe.
+        const resolvedTarget = targetKey ? normalizeKey(targetKey) : undefined;
+        const mixResult = resolvedTarget
+          ? await runTranspose(result, resolvedTarget, emit)
+          : result;
+        await runMix(mixResult, emit);
       } catch (err) {
         emit({ type: 'error', message: err instanceof Error ? err.message : String(err) });
       }

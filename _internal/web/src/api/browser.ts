@@ -396,7 +396,9 @@ export class BrowserApi implements ProcessingApi {
 
   // ── Step 3: mix ──────────────────────────────────────────────────────────────
 
-  async mixSongs(sessionId: string, config: Config): Promise<void> {
+  // targetKey is accepted for interface compatibility but transposition in browser
+  // mode is not yet implemented (PR 2 adds rubberband-wasm support).
+  async mixSongs(sessionId: string, config: Config, _targetKey?: string): Promise<void> {
     await this.initPromise;
     const es = this.es(sessionId);
     const session = this.sessions.get(sessionId);

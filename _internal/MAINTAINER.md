@@ -358,6 +358,38 @@ Tests are pure unit tests — no FFmpeg, no audio files, no network.
 
 ---
 
+## FFmpeg Rubberband Build
+
+For highest-quality transposition the app uses FFmpeg's `rubberband` filter
+(`-af rubberband=pitch=<factor>`), which requires `--enable-librubberband` at
+compile time.  The standard Homebrew `ffmpeg` formula does **not** include it.
+
+**Detection:** `NativeFFmpegBackend.probeRubberband()` runs `ffmpeg -filters`
+once on startup and caches the result.  If rubberband is absent, the backend
+falls back to `aresample=44100,asetrate=<rate>,aresample=44100,atempo=<1/f>`
+automatically — no config change needed.
+
+**Installing rubberband FFmpeg on macOS:**
+
+```sh
+brew uninstall ffmpeg
+brew tap homebrew-ffmpeg/ffmpeg
+brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-rubberband
+```
+
+The tap formula installs to the same prefix (`/opt/homebrew/bin/ffmpeg`),
+so it is a drop-in replacement.
+
+**Linux / Windows:** No pre-built formula known; user must compile from source
+with `--enable-librubberband` and ensure `librubberband-dev` is installed.
+Document when a reliable package source is confirmed.
+
+**Browser (PR 2):** The WASM path will use [`rubberband-wasm`](https://github.com/Daninet/rubberband-wasm)
+(standalone WASM module, Float32Array API) rather than a custom FFmpeg build.
+Pipeline: FFmpeg WASM decode → rubberband-wasm pitch-shift → FFmpeg WASM encode.
+
+---
+
 ## FFmpeg Filter Graph Reference
 
 ```
