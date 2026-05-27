@@ -35,3 +35,30 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  e2e-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npm run playwright:install
+
+      - name: Run browser E2E tests (VITE_BACKEND=browser)
+        run: npm run test:e2e:browser
+
+      - name: Upload Playwright browser report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-browser
+          path: playwright-results-browser/
+          retention-days: 7

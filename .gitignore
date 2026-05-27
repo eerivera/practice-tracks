@@ -31,5 +31,6 @@ config/user_mix.yaml
 
 # Playwright E2E — generated on test runs, not committed
 playwright-report/
+playwright-results-browser/
 test-results/
 
