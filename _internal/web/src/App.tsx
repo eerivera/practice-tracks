@@ -5,6 +5,7 @@ import { DropZone } from './components/DropZone.js';
 import { ProgressFeed } from './components/ProgressFeed.js';
 import { Soundboard } from './components/Soundboard.js';
 import { PastMixes } from './components/PastMixes.js';
+import { ALL_KEYS } from '@common/keys.js';
 import type { Config, StemFile, ProgressEvent, SongOutputs } from './types.js';
 
 const api = createApi();
@@ -37,6 +38,8 @@ export function App() {
   const [fileCount, setFileCount] = useState(0);
   const [showForceModal, setShowForceModal] = useState(false);
   const [showSwitchConfirm, setShowSwitchConfirm] = useState(false);
+  // targetKey: empty string = no transposition; otherwise a key name like "Bb"
+  const [targetKey, setTargetKey] = useState<string>('');
   // Set to true when the user dismisses the "existing output" warning by clicking
   // "Overwrite existing". The subsequent Normalize/Mix button run will use force=true.
   const [forceNextRun, setForceNextRun] = useState(false);
@@ -323,7 +326,7 @@ export function App() {
         api.getOutputs().then(setPastOutputs).catch(console.error);
       }
     );
-    api.mixSongs(sessionIdRef.current, config).catch((err: unknown) => {
+    api.mixSongs(sessionIdRef.current, config, targetKey || undefined).catch((err: unknown) => {
       setEvents((prev) => [...prev, { type: 'error', message: err instanceof Error ? err.message : String(err) }]);
     });
   }
@@ -378,6 +381,7 @@ export function App() {
     setExistingOutputCount(0);
     setSkippedCount(0);
     setShowForceModal(false);
+    setTargetKey('');
     filesRef.current = null;
     setPhase('idle');
   }
@@ -385,6 +389,8 @@ export function App() {
   // ── Derived UI state ─────────────────────────────────────────────────────────
 
   const isProcessing = ['extracting', 'normalizing', 'mixing'].includes(phase);
+  // Key selector: shown only when server-mode transposition is available.
+  const showKeySelector = api.supportsTranspose?.() === true;
   // True when the on-disk normalize cache exists and already matches the active
   // LUFS target — no FFmpeg run needed, safe to go straight to mix.
   const normalizeCacheIsValid = config !== null && normalizeCache !== null && normalizeCache.target_lufs === config.target_lufs;
@@ -560,6 +566,23 @@ export function App() {
         )}
 
         {showLog && <ProgressFeed events={events} />}
+
+        {/* Key selector — server mode only, shown before any mix step */}
+        {showKeySelector && (phase === 'extracted' || phase === 'normalized') && !showForceModal && (
+          <div className="flex items-center gap-2 flex-wrap text-xs text-slate-400">
+            <span>Transpose to key:</span>
+            <select
+              value={targetKey}
+              onChange={(e) => { setTargetKey(e.target.value); }}
+              className="bg-slate-700 text-slate-200 rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">(original key)</option>
+              {[...ALL_KEYS].map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {phase === 'extracted' && (
           <div className="space-y-3">

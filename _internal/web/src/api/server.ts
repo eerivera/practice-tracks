@@ -39,15 +39,21 @@ export class ServerApi implements ProcessingApi {
     if (!res.ok) throw new Error(`Normalize failed: ${res.statusText}`);
   }
 
-  async mixSongs(sessionId: string, _config: Config): Promise<void> {
+  async mixSongs(sessionId: string, _config: Config, targetKey?: string): Promise<void> {
     // config is carried through the server-side NormalizeResult from the prior
     // /api/normalize call; nothing extra needs to be sent here.
+    const body: { sessionId: string; targetKey?: string } = { sessionId };
+    if (targetKey) body.targetKey = targetKey;
     const res = await fetch('/api/mix', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`Mix failed: ${res.statusText}`);
+  }
+
+  supportsTranspose(): boolean {
+    return true;
   }
 
   getEventStream(sessionId: string): EventSource {

@@ -53,10 +53,23 @@ export interface NormalizeOptions {
   truePeak: number;
 }
 
+export interface TransposeOptions {
+  /** Semitone offset (positive = up, negative = down). */
+  semitones: number;
+}
+
 export interface AudioBackend {
   // Maximum number of normalize() calls that can safely run in parallel.
   // Native backend returns os.cpus().length; WASM returns 1 (shared VFS).
   readonly maxConcurrency: number;
   normalize(inputPath: string, outputPath: string, options: NormalizeOptions): Promise<void>;
   mix(inputs: MixInput[], outputPath: string, format: string): Promise<void>;
+  /**
+   * Pitch-shift a single audio file by the given semitone offset.
+   * Native: uses rubberband filter if available, falls back to asetrate+atempo.
+   * WASM: always uses asetrate+atempo (no rubberband in standard @ffmpeg/core build).
+   */
+  transpose(inputPath: string, outputPath: string, options: TransposeOptions): Promise<void>;
+  /** True when the backend supports transposition (always true for both backends). */
+  supportsTranspose(): boolean;
 }

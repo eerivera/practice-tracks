@@ -55,16 +55,22 @@ function moveZipToProcessed(zipPath: string): void {
 
 // Runs the pipeline for a single entry from to-mix.json, updates all queues,
 // and moves the zip to processed-zips/ on success.
+interface TransposeOpt {
+  targetKey?: string;
+  semitones?: number;
+}
+
 async function mixOne(
   songDir: string,
   zipPath: string | null,
   entryForce: boolean,
   globalForce: boolean,
-  archive: boolean
+  archive: boolean,
+  transpose?: TransposeOpt
 ): Promise<'mixed' | 'skipped' | 'failed'> {
   const force = globalForce || entryForce;
   try {
-    const result = await runPipeline({ songDir, force, archive }, consoleEmitter);
+    const result = await runPipeline({ songDir, force, archive, ...transpose }, consoleEmitter);
     if (result.skipped) return 'skipped';
 
     upsertUploadQueue({ songDir, outputDir: result.outputDir });
@@ -172,16 +178,28 @@ program
   )
   .option('--force', 're-mix even if output already exists')
   .option('--archive', 'archive existing output before overwriting')
+  .option('--to-key <key>', 'transpose to a different key before mixing (e.g. --to-key Bb)')
+  .option('--semitones <n>', 'transpose by a fixed semitone offset instead of naming a target key (e.g. --semitones -2)', parseInt)
   .action(
-    async (songDirArg: string | undefined, options: { force?: boolean; archive?: boolean }) => {
+    async (songDirArg: string | undefined, options: { force?: boolean; archive?: boolean; toKey?: string; semitones?: number }) => {
       const globalForce = options.force ?? false;
       const archive = options.archive ?? false;
+
+      if (options.semitones !== undefined && options.toKey !== undefined) {
+        console.error('Error: --to-key and --semitones cannot be used together. Use one or the other.');
+        process.exit(1);
+      }
+
+      const transpose: TransposeOpt | undefined =
+        options.toKey !== undefined ? { targetKey: options.toKey } :
+        options.semitones !== undefined ? { semitones: options.semitones } :
+        undefined;
 
       if (songDirArg) {
         // Single-song mode: mix this directory regardless of queue state
         const songDir = resolvedPath(songDirArg);
         const existing = getMixQueue().find((e) => e.songDir === songDir);
-        await mixOne(songDir, existing?.zipPath ?? null, existing?.force ?? false, globalForce, archive);
+        await mixOne(songDir, existing?.zipPath ?? null, existing?.force ?? false, globalForce, archive, transpose);
       } else {
         // Batch mode: process the to-mix queue
         const queue = getMixQueue();
@@ -192,7 +210,7 @@ program
         console.log(`Mix queue: ${queue.length} song(s)\n`);
         let mixed = 0, skipped = 0, failed = 0;
         for (const entry of queue) {
-          const outcome = await mixOne(entry.songDir, entry.zipPath, entry.force, globalForce, archive);
+          const outcome = await mixOne(entry.songDir, entry.zipPath, entry.force, globalForce, archive, transpose);
           if (outcome === 'mixed') mixed++;
           else if (outcome === 'skipped') skipped++;
           else failed++;
