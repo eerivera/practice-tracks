@@ -42,8 +42,8 @@ test('Past Mixes reconstructed from OPFS on page reload', async ({ page }) => {
   // Reload so BrowserApi.init() picks up the seeded data.
   await page.reload();
 
-  // Past Mixes section must show the song title.
-  await expect(page.getByText(SONG.displayName)).toBeVisible({ timeout: 5000 });
+  // Past Mixes section must show the song title heading.
+  await expect(page.getByRole('heading', { name: SONG.displayName })).toBeVisible({ timeout: 5000 });
 
   // Both mix files must appear as download links with blob: URLs.
   for (const filename of SONG.outputFilenames) {
@@ -60,7 +60,7 @@ test('"Download all" zip link exists after reload', async ({ page }) => {
   await page.reload();
 
   // The "Download all" anchor must have a blob: href too.
-  await expect(page.getByText(SONG.displayName)).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('heading', { name: SONG.displayName })).toBeVisible({ timeout: 5000 });
   const zipLink = page.getByRole('link', { name: 'Download all' });
   await expect(zipLink).toBeVisible();
   const href = await zipLink.getAttribute('href');
@@ -75,7 +75,7 @@ test('Re-mix button visible for songs loaded from OPFS', async ({ page }) => {
   await seedOpfsOutputs(page, SONG);
   await page.reload();
 
-  await expect(page.getByText(SONG.displayName)).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('heading', { name: SONG.displayName })).toBeVisible({ timeout: 5000 });
   await expect(page.getByRole('button', { name: 'Re-mix' })).toBeVisible();
 });
 
@@ -92,6 +92,6 @@ test('Past Mixes shows all seeded songs after reload', async ({ page }) => {
   });
   await page.reload();
 
-  await expect(page.getByText(SONG.displayName)).toBeVisible({ timeout: 5000 });
-  await expect(page.getByText('AnotherSong')).toBeVisible();
+  await expect(page.getByRole('heading', { name: SONG.displayName })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('heading', { name: 'AnotherSong' })).toBeVisible();
 });
