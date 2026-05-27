@@ -478,7 +478,11 @@ export class BrowserApi implements ProcessingApi {
   getConfig(): Promise<Config> {
     const saved = localStorage.getItem(BrowserApi.STORAGE_KEY);
     if (saved) {
-      try { return Promise.resolve(JSON.parse(saved) as Config); } catch { /* fall through */ }
+      try {
+        // Merge with DEFAULT_CONFIG so required array fields (buses, mixes) are
+        // never undefined even when loading a partial or out-of-date saved config.
+        return Promise.resolve({ ...DEFAULT_CONFIG, ...(JSON.parse(saved) as Partial<Config>) });
+      } catch { /* fall through */ }
     }
     return Promise.resolve(DEFAULT_CONFIG);
   }
