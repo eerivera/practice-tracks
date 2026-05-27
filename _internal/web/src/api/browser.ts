@@ -471,7 +471,10 @@ export class BrowserApi implements ProcessingApi {
     return Promise.resolve(songDirs.map((songDir) => ({ songDir, hasOutput: false })));
   }
 
-  getOutputs(): Promise<SongOutputs[]> {
+  async getOutputs(): Promise<SongOutputs[]> {
+    // Wait for init so persistedOutputs is populated before we read it.
+    // (App.tsx calls this on mount, potentially before BrowserApi.init() resolves.)
+    await this.initPromise;
     // Merge persisted outputs (from storage) with current-session outputs.
     // Session outputs take precedence (most recent mix wins for a given songDir).
     const merged = new Map<string, SongOutputs>(
@@ -482,7 +485,7 @@ export class BrowserApi implements ProcessingApi {
         merged.set(out.songDir, out);
       }
     }
-    return Promise.resolve([...merged.values()]);
+    return [...merged.values()];
   }
 
   async listSongs(): Promise<string[]> {

@@ -221,3 +221,64 @@ test('Re-mix with normalize disabled shows "Mix Practice Tracks"', async ({ page
     page.getByRole('button', { name: 'Mix Practice Tracks' })
   ).toBeVisible({ timeout: 5000 });
 });
+
+// ── Bug: "All done" appears in ProgressFeed for unrecognised sessions ──────────
+// When normalize is disabled, normalizeSongs() dispatches session_complete with
+// no preceding normalize_start/cached event.  ProgressFeed previously showed
+// "── All done ──" as a fallback label.  Fix: return null instead.
+
+test('"All done" never appears in the progress feed', async ({ page }) => {
+  await mockSseSequence(page, [
+    // Extract: one song, then done.
+    [
+      { type: 'song_header', songName: 'test-song', stemsDir: '', outputDir: '' },
+      { type: 'songs_ready', songDirs: ['songs/test-song'] },
+      { type: 'session_complete' },
+    ],
+    // Normalize with normalize=false: bare session_complete, no normalize_start.
+    [{ type: 'session_complete' }],
+    // Mix: a real mix event followed by completion.
+    [
+      { type: 'mix_start', total: 1 },
+      { type: 'mix_generated', name: 'full', stems: 2, timeMs: 100 },
+      { type: 'pipeline_complete', outputDir: 'songs/test-song/output', elapsedMs: 200, skipped: false, mixFiles: [] },
+      { type: 'session_complete' },
+    ],
+  ]);
+
+  await setupBaseMocks(page, { normalize: false });
+  await page.route('/api/check-outputs', (r) =>
+    r.fulfill({ json: [{ songDir: 'songs/test-song', hasOutput: false }] })
+  );
+  await page.route('/api/extract', (r) =>
+    r.fulfill({ json: { status: 'extracting', count: 1 } })
+  );
+  await page.route('/api/normalize', (r) =>
+    r.fulfill({ json: { status: 'normalizing', count: 1 } })
+  );
+  await page.route('/api/mix', (r) =>
+    r.fulfill({ json: { status: 'mixing', count: 1 } })
+  );
+  await page.route('/api/outputs', (r) => r.fulfill({ json: [] }));
+
+  await page.goto('/');
+
+  const fileInput = page.locator('input[type="file"][accept=".zip"]');
+  await fileInput.setInputFiles({
+    name: 'test-song.zip',
+    mimeType: 'application/zip',
+    buffer: Buffer.from('PK\x03\x04'),
+  });
+  await page.getByRole('button', { name: 'Extract Stems' }).click();
+  await page.getByRole('button', { name: 'Mix Practice Tracks' }).click();
+
+  // Wait for the mix to reach complete phase.
+  await expect(
+    page.getByRole('button', { name: 'Process More Files' })
+  ).toBeVisible({ timeout: 5000 });
+
+  // "All done" must never appear anywhere in the feed.
+  await expect(
+    page.getByText('── All done ──', { exact: true })
+  ).not.toBeAttached();
+});

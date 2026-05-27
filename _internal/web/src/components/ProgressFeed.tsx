@@ -63,7 +63,7 @@ function eventToLine(e: ProgressEvent, index: number, all: ProgressEvent[]): str
       if (session.some((ev) => ev.type === 'extract_start' || ev.type === 'songs_ready')) {
         return '── Extraction complete ──';
       }
-      return '── All done ──';
+      return null; // session contained no recognised step (e.g. normalize skipped/disabled)
     }
     default:
       return null;
